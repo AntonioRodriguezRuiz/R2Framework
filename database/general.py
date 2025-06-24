@@ -3,7 +3,9 @@ from fastapi.params import Depends
 from sqlmodel import SQLModel, Session, create_engine
 from gateway.models import * # Needed for SQLModel to recognize the models defined in gateway.models
 from tools.models import * # Needed for SQLModel to recognize the models defined in tools.models
+from modules.models import * # Needed for SQLModel to recognize the models defined in modules.models
 from settings import POSTGRES_URL
+import database.populators as populators
 
 # Database one: General purpose, postgresql
 
@@ -13,6 +15,10 @@ general_engine = create_engine(postgres_url)
 
 async def create_db_and_tables():
     SQLModel.metadata.create_all(general_engine)
+    for populator in populators.__all__:
+        populator_func = getattr(populators, populator)
+        if callable(populator_func):
+            populator_func(general_engine)
 
 async def drop_db_and_tables():
     SQLModel.metadata.drop_all(general_engine)
