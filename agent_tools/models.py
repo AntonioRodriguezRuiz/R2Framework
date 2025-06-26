@@ -1,7 +1,7 @@
 from sqlmodel import SQLModel, Field, Relationship
 from typing import Optional
 from gateway.models import Module
-from tools.links import ToolModuleLink
+from agent_tools.links import ToolModuleLink
 from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy import Column
 import uuid

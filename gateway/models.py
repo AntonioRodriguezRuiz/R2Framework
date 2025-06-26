@@ -4,7 +4,7 @@ from sqlmodel import SQLModel, Field, Relationship
 from typing import Optional
 from datetime import datetime
 from gateway.enums import ExceptionType
-from tools.links import ToolModuleLink
+from agent_tools.links import ToolModuleLink
 import uuid
 
 class Module(SQLModel, table=True):

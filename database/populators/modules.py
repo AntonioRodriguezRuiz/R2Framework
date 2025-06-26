@@ -36,7 +36,7 @@ def populate_modules(engine):
                 """
             ),
             enabled=True,
-            routing_tool="route_ui_error"
+            routing_tool="ui_exception_handler",
         )
         
         # General Error Module
