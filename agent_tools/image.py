@@ -34,16 +34,14 @@ def image_to_base64(image_path: str) -> str:
 @tool(
     description="Take a screenshot and return it as a base64-encoded string.",
 )
-def take_screenshot() -> str:
+def take_screenshot() -> bytes:
     """
     Take a screenshot and return it as a base64-encoded string.
 
     Returns:
         str: Base64-encoded string of the screenshot.
     """
-    img = screenshot()
     buffer = BytesIO()
-    img.save(buffer, format="JPEG")
-    encoded_string = base64.b64encode(buffer.getvalue()).decode("utf-8")
+    screenshot().save(buffer, format="JPEG")
 
-    return encoded_string
+    return buffer.getvalue()
