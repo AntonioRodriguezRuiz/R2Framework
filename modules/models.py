@@ -108,7 +108,7 @@ class Planning(SQLModel, table=True):
     details: Optional[str] = Field(
         None, description="Details about the planning, if available."
     )
-    solution_id: uuid.UUID = Field(
+    solution_id: Optional[uuid.UUID] = Field(
         ...,
         foreign_key="solution.id",
         description="ID of the solution that this planning is associated with.",

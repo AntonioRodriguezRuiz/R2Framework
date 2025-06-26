@@ -3,6 +3,7 @@
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 import database.general as database
+from gateway.agent import robot_exception_handler
 
 
 @asynccontextmanager
@@ -21,3 +22,12 @@ app = FastAPI(lifespan=lifespan)
 @app.get("/")
 async def root():
     return {"message": "Welcome to the FastAPI application!"}
+
+
+@app.post("/robot_exception")
+async def handle_robot_exception(details: str):
+    """
+    Passes the exception to the robot exception handler for processing.
+    """
+    response = robot_exception_handler(details)
+    return response
