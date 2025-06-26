@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from contextlib import asynccontextmanager
 import database.general as database
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -13,7 +14,9 @@ async def lifespan(app: FastAPI):
     yield
     await database.drop_db_and_tables()
 
+
 app = FastAPI(lifespan=lifespan)
+
 
 @app.get("/")
 async def root():

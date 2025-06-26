@@ -4,6 +4,7 @@ from sqlmodel import Session, select
 from gateway.models import Module
 from gateway.enums import ExceptionType
 
+
 def populate_modules(engine):
     """
     Populates the database with the default modules for the R2Framework.
@@ -11,13 +12,13 @@ def populate_modules(engine):
     - UI Error Module: Handles UI-related exceptions with screenshot access
     - General Error Module: Handles all other types of exceptions
     """
-    
+
     with Session(engine) as session:
         existing_modules = session.exec(select(Module)).unique()
         if existing_modules:
             print("Modules already populated. Skipping population.")
             return
-        
+
         ui_error_module = Module(
             name="UI Error Handler",
             description=(
@@ -38,7 +39,7 @@ def populate_modules(engine):
             enabled=True,
             routing_tool="ui_exception_handler",
         )
-        
+
         # General Error Module
         general_error_module = Module(
             name="General Error Handler",
@@ -60,12 +61,12 @@ def populate_modules(engine):
                 """
             ),
             enabled=True,
-            routing_tool="route_general_error"
+            routing_tool="route_general_error",
         )
-        
+
         # Add modules to session
         session.add(ui_error_module)
         session.add(general_error_module)
         session.commit()
-        
+
         print(f"Successfully populated modules")

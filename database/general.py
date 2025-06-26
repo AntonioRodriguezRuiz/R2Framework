@@ -1,9 +1,9 @@
 from typing import Annotated
 from fastapi.params import Depends
 from sqlmodel import SQLModel, Session, create_engine
-from gateway.models import * # Needed for SQLModel to recognize the models defined in gateway.models
-from agent_tools.models import * # Needed for SQLModel to recognize the models defined in tools.models
-from modules.models import * # Needed for SQLModel to recognize the models defined in modules.models
+from gateway.models import *  # Needed for SQLModel to recognize the models defined in gateway.models
+from agent_tools.models import *  # Needed for SQLModel to recognize the models defined in tools.models
+from modules.models import *  # Needed for SQLModel to recognize the models defined in modules.models
 from settings import POSTGRES_URL
 import database.populators as populators
 
@@ -13,6 +13,7 @@ postgres_url = POSTGRES_URL
 
 general_engine = create_engine(postgres_url)
 
+
 async def create_db_and_tables():
     SQLModel.metadata.create_all(general_engine)
     for populator in populators.__all__:
@@ -20,8 +21,10 @@ async def create_db_and_tables():
         if callable(populator_func):
             populator_func(general_engine)
 
+
 async def drop_db_and_tables():
     SQLModel.metadata.drop_all(general_engine)
+
 
 def get_session():
     with Session(general_engine) as session:
