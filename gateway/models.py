@@ -1,11 +1,14 @@
 # Defines the data models for the gateway service
 
 from sqlmodel import SQLModel, Field, Relationship
+from sqlalchemy import Column
+from sqlalchemy.dialects.postgresql import JSON
 from typing import Optional
 from datetime import datetime
 from gateway.enums import ExceptionType
 from agent_tools.links import ToolModuleLink
 import uuid
+from pydantic import BaseModel
 
 
 class Module(SQLModel, table=True):
@@ -34,11 +37,11 @@ class Module(SQLModel, table=True):
         description="The name of the tool used for routing exceptions to this module. This should be the name of a tool that is registered in the system.",
     )
     # restrictions: Optional[list[str]] = Field(None, description="List of restrictions for the module, if any. (eg. 'no access to UI')")
-    tools: list["Tool"] = Relationship(
+    tools: list["Tool"] = Relationship(  # noqa
         back_populates="modules",
         sa_relationship_kwargs={"lazy": "joined"},
         link_model=ToolModuleLink,
-    )  # ignore: type
+    )
 
     def to_json(self) -> dict:
         """Convert the model to a dictionary structure."""
@@ -72,6 +75,11 @@ class RobotException(SQLModel, table=True):
         description="Timestamp of when the exception record was created.",
     )
     code: str = Field(..., description="The error code associated with the exception.")
+    variables: Optional[dict] = Field(
+        None,
+        description="A dictionary of variables associated with the robot execution, if any.",
+        sa_column=Column(JSON),
+    )
     exception_type: ExceptionType = Field(..., description="The type of exception")
     message: str = Field(
         ..., description="A human-readable message describing the error."
@@ -79,6 +87,9 @@ class RobotException(SQLModel, table=True):
     details: Optional[str] = Field(
         None, description="Additional details about the error, if available."
     )
+
+    class Config:
+        arbitrary_types_allowed = True
 
     def to_json(self) -> dict:
         """Convert the model to a dictionary structure."""
@@ -168,3 +179,17 @@ class Audit(SQLModel, table=True):
             "module_id": str(self.module_id),
             "exception_id": str(self.exception_id),
         }
+
+
+####################
+## REQUEST MODELS ##
+####################
+
+
+class RobotExceptionRequest(BaseModel):
+    code: str
+    variables: Optional[dict]
+    details: Optional[str]
+
+    def __str__(self):
+        return super().__str__()

@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from contextlib import asynccontextmanager
 import database.general as database
 from gateway.agent import robot_exception_handler
+from gateway.models import RobotExceptionRequest
 
 
 @asynccontextmanager
@@ -25,9 +26,9 @@ async def root():
 
 
 @app.post("/robot_exception")
-async def handle_robot_exception(details: str):
+async def handle_robot_exception(request: RobotExceptionRequest):
     """
     Passes the exception to the robot exception handler for processing.
     """
-    response = robot_exception_handler(details)
+    response = robot_exception_handler(request)
     return response

@@ -15,12 +15,13 @@ from settings import PROVIDER_API_KEY, PROVIDER_API_BASE, PROVIDER_MODEL
 from gateway.prompts import (
     GATEWAY_ORCHESTRATOR_PROMPT,
 )
+from gateway.models import RobotExceptionRequest
 
 from modules.uierror.agent import ui_exception_handler
 from agent_tools.database import available_modules
 
 
-def robot_exception_handler(exception: str) -> str:
+def robot_exception_handler(exception: RobotExceptionRequest) -> str:
     """
     Central Gateway Agent for the RPA Recovery Framework.
 
