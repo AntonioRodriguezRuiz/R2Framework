@@ -4,7 +4,7 @@ from gateway.models import Module
 from sqlmodel import Session, select
 
 
-@tool(description="List all available modules in the system.")
+@tool(name="available_modules", description="List all available modules in the system.")
 def available_modules() -> list[str]:
     """
     List all available modules in the system.
@@ -18,6 +18,7 @@ def available_modules() -> list[str]:
 
 
 @tool(
+    name="register_solution",
     description="Register a new solution by an agentic module.",
 )
 def register_solution(solution_description: str, module_name: str) -> str:

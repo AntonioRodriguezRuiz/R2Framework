@@ -72,6 +72,7 @@ def robot_exception_handler(exception: RobotExceptionRequest) -> str:
 
 
 @tool(
+    name="route_to_human",
     description="Route the error to a human operator for manual intervention.",
 )
 def route_to_human(error_data: str) -> Dict[str, Any]:
