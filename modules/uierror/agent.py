@@ -164,7 +164,9 @@ def step_execution_handler(
     messages = [
         {
             "role": "system",
-            "content": RECOVERY_STEP_EXECUTION_PROMPT,
+            "content": [
+                {"text": RECOVERY_STEP_EXECUTION_PROMPT},
+            ],
         },
         {
             "role": "user",
@@ -180,7 +182,11 @@ def step_execution_handler(
         },
         {
             "role": "assistant",
-            "content": "I see this is the image of the current UI state. I will analyze it and execute the step once you provide the step, step history, and process goal.",
+            "content": [
+                {
+                    "text": "I see this is the image of the current UI state. I will analyze it and execute the step once you provide the step, step history, and process goal.",
+                }
+            ],
         },
     ]
 
