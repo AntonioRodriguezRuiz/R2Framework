@@ -3,10 +3,13 @@ from strands.models.openai import OpenAIModel
 from settings import (
     PROVIDER_API_BASE,
     PROVIDER_API_KEY,
+    PROVIDER_MODEL,
     PROVIDER_VISION_MODEL,
+    PROVIDER_GROUNDING_MODEL,
     OLLAMA_URL,
 )
 from modules.uierror.prompts import (
+    UI_EXCEPTION_HANDLER,
     RECOVERY_PLANNER_PROMPT,
     RECOVERY_STEP_EXECUTION_PROMPT,
     COMPUTER_USE_DOUBAO,
@@ -21,9 +24,10 @@ import httpx  # For Ollama usage
 
 
 @tool(
+    name="ui_exception_handler",
     description="Generate a recovery plan for a UI error based on the provided task and action history.",
 )
-def ui_exception_handler(task: str, action_history: str) -> str:
+def ui_exception_handler(task: str, action_history: str, variables: dict) -> str:
     """
     Generate a recovery plan for a UI error based on the provided task and action history.
 
@@ -31,6 +35,55 @@ def ui_exception_handler(task: str, action_history: str) -> str:
         task (str): The task description that the robot was trying to complete.
         action_history (str): The history of actions taken by the robot.
         screenshot (str): base64-encoded screenshot of the current UI state.
+        variables (dict): A dictionary of variables used in the process, including the ones that may have already been used.
+
+    Returns:
+        str: A JSON object containing the recovery plan.
+    """
+    model = OpenAIModel(
+        client_args={
+            "api_key": PROVIDER_API_KEY,
+            "base_url": PROVIDER_API_BASE,
+        },
+        model_id=PROVIDER_MODEL,
+    )
+
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"text": UI_EXCEPTION_HANDLER},
+            ],
+        },
+    ]
+
+    agent = Agent(
+        model=model,
+        messages=messages,
+        tools=[recovery_plan_generator, step_execution_handler],
+    )
+    response = agent(
+        f"Task: {task}\nAction History: {action_history}\nVariables: {variables}. DO NOT ASK FOR CONFIRMATION, execute the plan directly."
+    )
+
+    # TODO: Add response json to prompt and parse it
+    return response
+
+
+@tool(
+    name="recovery_plan_generator",
+    description="Generate a recovery plan for a UI error based on the provided task and action history.",
+)
+def recovery_plan_generator(task: str, action_history: str, variables: dict) -> str:
+    """
+    This function is to be called by the ui_exception_handler tool to generate a recovery plan for a UI error.
+
+    This is because current openrouter vision models do not support tool uses, so we need to generate a plan separately from the exception handler.
+
+    Args:
+        task (str): The task description that the robot was trying to complete.
+        action_history (str): The history of actions taken by the robot.
+        variables (dict): A dictionary of variables used in the process, including the ones that may have already been used.
 
     Returns:
         str: A JSON object containing the recovery plan.
@@ -63,7 +116,7 @@ def ui_exception_handler(task: str, action_history: str) -> str:
             "content": [
                 {
                     "type": "text",
-                    "text": "I see this is the image of the current UI state. I will analyze it and generate a recovery plan once you provide the task and action history.",
+                    "text": "I see this is the image of the current UI state. I will analyze it and create a recovery plan once you provide the task and action history.",
                 }
             ],
         },
@@ -72,9 +125,10 @@ def ui_exception_handler(task: str, action_history: str) -> str:
     agent = Agent(
         model=model,
         messages=messages,
-        tools=[step_execution_handler, take_screenshot],
     )
-    response = agent(f"Task: {task}\nAction History: {action_history}")
+    response = agent(
+        f"Task: {task}\nAction History: {action_history}.\nVariables: {variables}."
+    )
 
     # TODO: Add response json to prompt and parse it
     return response
@@ -84,7 +138,7 @@ def ui_exception_handler(task: str, action_history: str) -> str:
     description="Execute the steps provided in the recovery plan to resolve the UI error.",
 )
 def step_execution_handler(
-    step: str, step_history: str, process_goal: str, is_final: bool
+    step: str, step_history: str, process_goal: str, variables: dict, is_final: bool
 ) -> str:
     """
     Execute the step provided in the recovery plan to resolve the UI error.
@@ -93,6 +147,7 @@ def step_execution_handler(
         step (str): The step to execute for advancing in the resolution of the UI error.
         step_history (str): The history of steps taken so far.
         process_goal (str): The overall goal of the process that the robot is trying to achieve.
+        variables (dict): A dictionary of variables used in the process, including the ones that may have already been used.
         is_final (bool): Indicates if this is the final step in the recovery process.
 
     Returns:
@@ -133,10 +188,10 @@ def step_execution_handler(
         model=model,
         messages=messages,
         # TODO: The take_screenshot tool won't work in this context because it will return text. We need an analyze image tool
-        tools=[ui_tars, take_screenshot, ui_tars_execute],
+        tools=[ui_tars, ui_tars_execute],
     )
     response = agent(
-        f"Step: {step}\nAction History: {step_history}\nProcess Goal: {process_goal}\nIs Final Step: {is_final}"
+        f"Step: {step}\nAction History: {step_history}\nProcess Goal: {process_goal}\nVariables: {variables}\nIs Final Step: {is_final}"
     )
 
     # TODO: Add response json to prompt and parse it
@@ -144,9 +199,10 @@ def step_execution_handler(
 
 
 @tool(
+    name="ui_tars",
     description="A element and action ground model for UI tasks.",
 )
-def ui_tars(task: str, action_history: str, screenshot: str) -> str:
+def ui_tars(task: str, action_history: str, variables: dict) -> str:
     """
     Grounds an action for the current UI state using the UITARS ML model.
 
@@ -154,6 +210,7 @@ def ui_tars(task: str, action_history: str, screenshot: str) -> str:
         task (str): The task description (step).
         action_history (str): The history of actions taken by the robot.
         screenshot (str): base64-encoded screenshot of the current UI state.
+        variables (dict): A dictionary of variables used in the process, including the ones that may have already been used.
 
     Returns:
         str: A string containing the RAW response from UITARS, which has the action to be performed on the screen.
@@ -163,7 +220,10 @@ def ui_tars(task: str, action_history: str, screenshot: str) -> str:
     instruction = f"""
 Task: {task}
 Action History: {action_history}
+Variables: {variables}
 """
+
+    screenshot = take_screenshot()
 
     messages = [
         {
@@ -173,19 +233,26 @@ Action History: {action_history}
         },
     ]
 
-    response = httpx.post(
-        url=f"{OLLAMA_URL}/api/chat",
-        json={
-            "model": "ui-tars-1.5-7b-q8_0",
-            "messages": messages,
-            "stream": False,
+    model = OpenAIModel(
+        client_args={
+            "api_key": PROVIDER_API_KEY,
+            "base_url": PROVIDER_API_BASE,
         },
+        model_id=PROVIDER_GROUNDING_MODEL,
     )
+
+    agent = Agent(
+        model=model,
+        messages=messages,
+        tools=[],
+    )
+    response = agent.run("")  # Empty input since all context is in messages
 
     return response.json().get("message", {}).get("content", "")
 
 
 @tool(
+    name="ui_tars_execute",
     description="Execute the action on the UI element based on the TARS model.",
 )
 def ui_tars_execute(ui_tars_response: str) -> str:
