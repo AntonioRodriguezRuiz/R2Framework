@@ -189,7 +189,7 @@ class Audit(SQLModel, table=True):
 class RobotExceptionRequest(BaseModel):
     code: str
     variables: Optional[dict]
-    details: Optional[str]
+    details: Optional[dict]
 
     def __str__(self):
         return super().__str__()
