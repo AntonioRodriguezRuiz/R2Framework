@@ -234,7 +234,9 @@ Variables: {variables}
     messages = [
         {
             "role": "user",
-            "content": COMPUTER_USE_DOUBAO.format(instruction),
+            "content": [
+                {"text": COMPUTER_USE_DOUBAO.format(instruction=instruction)},
+            ],
             "images": [screenshot],
         },
     ]
@@ -252,7 +254,7 @@ Variables: {variables}
         messages=messages,
         tools=[],
     )
-    response = agent.run("")  # Empty input since all context is in messages
+    response = agent("")  # Empty input since all context is in messages
 
     return response.json().get("message", {}).get("content", "")
 
