@@ -69,13 +69,15 @@ Provide your routing decision as a structured response:
     "fallback_modules": ["Alternative modules if primary fails"],
     "estimated_complexity": "Simple|Moderate|Complex",
   },
-  {
   "result": {
     "module": "module_name",
     "task": "Task description",
     "tools_used": ["tool1", "tool2"],
     "status": "success|failure",
     "message": "A message explaining the status",
+  },
+  "tool_output": {
+    ...
   }
 }
 ```

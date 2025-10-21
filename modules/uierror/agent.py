@@ -27,13 +27,21 @@ import httpx  # For Ollama usage
     name="ui_exception_handler",
     description="Generate a recovery plan for a UI error based on the provided task and action history.",
 )
-def ui_exception_handler(task: str, action_history: str, variables: dict) -> str:
+def ui_exception_handler(
+    task: str,
+    action_history: list,
+    failed_activity: dict,
+    future_activities: list,
+    variables: dict,
+) -> str:
     """
     Generate a recovery plan for a UI error based on the provided task and action history.
 
     Args:
         task (str): The task description that the robot was trying to complete.
-        action_history (str): The history of actions taken by the robot.
+        action_history (list): The history of actions taken by the robot.
+        failed_activity (dict): The action that was expected to be performed but failed.
+        future_activities (list): The list of future activities that the robot was planning to perform.
         screenshot (str): base64-encoded screenshot of the current UI state.
         variables (dict): A dictionary of variables used in the process, including the ones that may have already been used.
 
@@ -63,7 +71,7 @@ def ui_exception_handler(task: str, action_history: str, variables: dict) -> str
         tools=[recovery_plan_generator, step_execution_handler],
     )
     response = agent(
-        f"Task: {task}\nAction History: {action_history}\nVariables: {variables}. DO NOT ASK FOR CONFIRMATION, execute the plan directly."
+        f"Task: {task}\nAction History: {action_history}\nFailed Action: {failed_activity}\nFuture Activities: {future_activities}\nVariables: {variables}. DO NOT ASK FOR CONFIRMATION, execute the plan directly."
     )
 
     # TODO: Add response json to prompt and parse it
@@ -74,7 +82,13 @@ def ui_exception_handler(task: str, action_history: str, variables: dict) -> str
     name="recovery_plan_generator",
     description="Generate a recovery plan for a UI error based on the provided task and action history.",
 )
-def recovery_plan_generator(task: str, action_history: str, variables: dict) -> str:
+def recovery_plan_generator(
+    task: str,
+    action_history: list,
+    failed_activity: dict,
+    future_activities: list,
+    variables: dict,
+) -> str:
     """
     This function is to be called by the ui_exception_handler tool to generate a recovery plan for a UI error.
 
@@ -82,7 +96,9 @@ def recovery_plan_generator(task: str, action_history: str, variables: dict) -> 
 
     Args:
         task (str): The task description that the robot was trying to complete.
-        action_history (str): The history of actions taken by the robot.
+        action_history (list): The history of actions taken by the robot.
+        failed_activity (dict): The action that was expected to be performed but failed.
+        future_activities (list): The list of future activities that the robot was planning to perform.
         variables (dict): A dictionary of variables used in the process, including the ones that may have already been used.
 
     Returns:
@@ -127,7 +143,7 @@ def recovery_plan_generator(task: str, action_history: str, variables: dict) -> 
         messages=messages,
     )
     response = agent(
-        f"Task: {task}\nAction History: {action_history}.\nVariables: {variables}."
+        f"Task: {task}\nAction History: {action_history}\nFailed Action: {failed_activity}\nFuture Activities: {future_activities}\nVariables: {variables}. DO NOT ASK FOR CONFIRMATION, execute the plan directly."
     )
 
     # TODO: Add response json to prompt and parse it
@@ -197,7 +213,7 @@ def step_execution_handler(
         tools=[ui_tars, ui_tars_execute],
     )
     response = agent(
-        f"Step: {step}\nAction History: {step_history}\nProcess Goal: {process_goal}\nVariables: {variables}\nIs Final Step: {is_final}"
+        f"Step: {step}\nStep History: {step_history}\nProcess Goal: {process_goal}\nVariables: {variables}\nIs Final Step: {is_final}"
     )
 
     # TODO: Add response json to prompt and parse it
@@ -208,13 +224,13 @@ def step_execution_handler(
     name="ui_tars",
     description="A element and action ground model for UI tasks.",
 )
-def ui_tars(task: str, action_history: str, variables: dict) -> str:
+def ui_tars(task: str, step_history: str, variables: dict) -> str:
     """
     Grounds an action for the current UI state using the UITARS ML model.
 
     Args:
         task (str): The task description (step).
-        action_history (str): The history of actions taken by the robot.
+        step_history (str): The history of step taken so far to solve the error.
         screenshot (str): base64-encoded screenshot of the current UI state.
         variables (dict): A dictionary of variables used in the process, including the ones that may have already been used.
 
@@ -225,7 +241,7 @@ def ui_tars(task: str, action_history: str, variables: dict) -> str:
 
     instruction = f"""
 Task: {task}
-Action History: {action_history}
+Step History: {step_history}
 Variables: {variables}
 """
 
