@@ -5,6 +5,7 @@ from settings import (
     PROVIDER_API_KEY,
     PROVIDER_MODEL,
     PROVIDER_VISION_MODEL,
+    PROVIDER_VISION_TOOL_MODEL,
     PROVIDER_GROUNDING_MODEL,
     OLLAMA_URL,
 )
@@ -18,9 +19,7 @@ from modules.uierror.uitars import (
     parse_action_to_structure_output,
     parsing_response_to_pyautogui_code,
 )
-from agent_tools.image import take_screenshot
-import pyautogui  # noqa
-import httpx  # For Ollama usage
+from agent_tools.image import screenshot_bytes, take_screenshot
 
 
 @tool(
@@ -121,7 +120,7 @@ def recovery_plan_generator(
                     "image": {
                         "format": "jpeg",
                         "source": {
-                            "bytes": take_screenshot(),
+                            "bytes": screenshot_bytes(),
                         },
                     },
                 },
@@ -174,7 +173,7 @@ def step_execution_handler(
             "api_key": PROVIDER_API_KEY,
             "base_url": PROVIDER_API_BASE,
         },
-        model_id=PROVIDER_VISION_MODEL,
+        model_id=PROVIDER_VISION_TOOL_MODEL,
     )
 
     messages = [
@@ -191,7 +190,7 @@ def step_execution_handler(
                     "type": "image",
                     "image": {
                         "format": "jpeg",
-                        "source": {"bytes": take_screenshot()},
+                        "source": {"bytes": screenshot_bytes()},
                     },
                 },
             ],
@@ -209,8 +208,7 @@ def step_execution_handler(
     agent = Agent(
         model=model,
         messages=messages,
-        # TODO: The take_screenshot tool won't work in this context because it will return text. We need an analyze image tool
-        tools=[ui_tars, ui_tars_execute],
+        tools=[ui_tars, ui_tars_execute, take_screenshot],
     )
     response = agent(
         f"Step: {step}\nStep History: {step_history}\nProcess Goal: {process_goal}\nVariables: {variables}\nIs Final Step: {is_final}"
@@ -245,21 +243,25 @@ Step History: {step_history}
 Variables: {variables}
 """
 
-    screenshot = take_screenshot()
-
     messages = [
         {
             "role": "user",
             "content": [
                 {"text": COMPUTER_USE_DOUBAO.format(instruction=instruction)},
+                {
+                    "type": "image",
+                    "image": {
+                        "format": "jpeg",
+                        "source": {"bytes": screenshot_bytes()},
+                    },
+                },
             ],
-            "images": [screenshot],
         },
     ]
 
     model = OpenAIModel(
         client_args={
-            "api_key": PROVIDER_API_KEY,
+            "api_key": OLLAMA_URL,
             "base_url": PROVIDER_API_BASE,
         },
         model_id=PROVIDER_GROUNDING_MODEL,
@@ -268,7 +270,6 @@ Variables: {variables}
     agent = Agent(
         model=model,
         messages=messages,
-        tools=[],
     )
     response = agent("")  # Empty input since all context is in messages
 

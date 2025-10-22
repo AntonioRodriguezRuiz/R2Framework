@@ -1,4 +1,5 @@
 from strands import tool
+from strands.types.tools import ToolUse
 import base64
 from PIL import Image
 from io import BytesIO
@@ -34,14 +35,34 @@ def image_to_base64(image_path: str) -> str:
 @tool(
     description="Take a screenshot and return it as a base64-encoded string.",
 )
-def take_screenshot() -> bytes:
+def take_screenshot(tool: ToolUse) -> bytes:
     """
     Take a screenshot and return it as a base64-encoded string.
+
+    Args:
+        tool: ToolUse object containing the tool usage information and parameters
 
     Returns:
         str: Base64-encoded string of the screenshot.
     """
+    tool_use_id = tool["toolUseId"]
+
+    return {
+        "toolUseId": tool_use_id,
+        "status": "success",
+        "content": [
+            {"image": {"format": "JPEG", "source": {"bytes": screenshot_bytes()}}}
+        ],
+    }
+
+
+def screenshot_bytes() -> bytes:
+    """
+    Take a screenshot and return it as bytes.
+
+    Returns:
+        bytes: Screenshot image data in bytes.
+    """
     buffer = BytesIO()
     screenshot().save(buffer, format="JPEG")
-
     return buffer.getvalue()
