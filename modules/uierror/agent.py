@@ -8,8 +8,10 @@ from settings import (
     PROVIDER_VISION_TOOL_MODEL,
     PROVIDER_GROUNDING_MODEL,
     OLLAMA_URL,
+    UI_ERROR_PLANNING,
 )
 from modules.uierror.prompts import (
+    RECOVERY_DIRECT_PROMPT,
     UI_EXCEPTION_HANDLER,
     RECOVERY_PLANNER_PROMPT,
     RECOVERY_STEP_EXECUTION_PROMPT,
@@ -64,13 +66,92 @@ def ui_exception_handler(
         },
     ]
 
+    recovery_tools = (
+        [recovery_plan_generator, step_execution_handler]
+        if UI_ERROR_PLANNING
+        else [recovery_agent]
+    )
+
     agent = Agent(
         model=model,
         messages=messages,
-        tools=[recovery_plan_generator, step_execution_handler],
+        tools=[] + recovery_tools,
     )
     response = agent(
         f"Task: {task}\nAction History: {action_history}\nFailed Action: {failed_activity}\nFuture Activities: {future_activities}\nVariables: {variables}. DO NOT ASK FOR CONFIRMATION, execute the plan directly."
+    )
+
+    # TODO: Add response json to prompt and parse it
+    return response
+
+
+@tool(
+    name="recovery_plan_generator",
+    description="Generate a recovery plan for a UI error based on the provided task and action history.",
+)
+def recovery_agent(
+    task: str,
+    action_history: list,
+    failed_activity: dict,
+    future_activities: list,
+    variables: dict,
+) -> str:
+    """
+    This function is to be called by the ui_exception_handler tool to generate a recovery plan for a UI error.
+
+    This is because current openrouter vision models do not support tool uses, so we need to generate a plan separately from the exception handler.
+
+    Args:
+        task (str): The task description that the robot was trying to complete.
+        action_history (list): The history of actions taken by the robot.
+        failed_activity (dict): The action that was expected to be performed but failed.
+        future_activities (list): The list of future activities that the robot was planning to perform.
+        variables (dict): A dictionary of variables used in the process, including the ones that may have already been used.
+
+    Returns:
+        str: A JSON object containing the recovery plan.
+    """
+    model = OpenAIModel(
+        client_args={
+            "api_key": PROVIDER_API_KEY,
+            "base_url": PROVIDER_API_BASE,
+        },
+        model_id=PROVIDER_VISION_TOOL_MODEL,
+    )
+
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"text": RECOVERY_DIRECT_PROMPT},
+                {
+                    "image": {
+                        "format": "jpeg",
+                        "source": {
+                            "bytes": screenshot_bytes(),
+                        },
+                    },
+                },
+            ],
+        },
+        {
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "I see this is the image of the current UI state. I will analyze it and create a recovery plan once you provide the task and action history.",
+                }
+            ],
+        },
+    ]
+
+    agent = Agent(
+        model=model,
+        messages=messages,
+        tools=[take_screenshot, ui_tars],
+    )
+    response = agent(
+        f"Task: {task}\nAction History: {action_history}\nFailed Action: {failed_activity}\nFuture Activities: {future_activities}\nVariables: {variables}. DO NOT ASK FOR CONFIRMATION, execute the actions directly."
     )
 
     # TODO: Add response json to prompt and parse it
@@ -208,7 +289,7 @@ def step_execution_handler(
     agent = Agent(
         model=model,
         messages=messages,
-        tools=[ui_tars, ui_tars_execute, take_screenshot],
+        tools=[ui_tars, take_screenshot],
     )
     response = agent(
         f"Step: {step}\nStep History: {step_history}\nProcess Goal: {process_goal}\nVariables: {variables}\nIs Final Step: {is_final}"
@@ -261,8 +342,8 @@ Variables: {variables}
 
     model = OpenAIModel(
         client_args={
-            "api_key": OLLAMA_URL,
-            "base_url": PROVIDER_API_BASE,
+            "api_key": PROVIDER_API_KEY,
+            "base_url": OLLAMA_URL,
         },
         model_id=PROVIDER_GROUNDING_MODEL,
     )
@@ -273,22 +354,21 @@ Variables: {variables}
     )
     response = agent("")  # Empty input since all context is in messages
 
-    return response.json().get("message", {}).get("content", "")
+    ui_tars_response = response.message.get("content", "")[0].get("text", "")
 
+    # @tool(
+    #     name="ui_tars_execute",
+    #     description="Execute the action on the UI element based on the TARS model.",
+    # )
+    # def ui_tars_execute(ui_tars_response: str) -> str:
+    #     """
+    #     Execute the action on the UI element based on the TARS model.
 
-@tool(
-    name="ui_tars_execute",
-    description="Execute the action on the UI element based on the TARS model.",
-)
-def ui_tars_execute(ui_tars_response: str) -> str:
-    """
-    Execute the action on the UI element based on the TARS model.
+    #     Args:
+    #         ui_tars_response (str): The RAW response from the `ui_tars` tool.
 
-    Args:
-        ui_tars_response (str): The RAW response from the `ui_tars` tool.
-
-    Returns:
-    """
+    #     Returns:
+    #     """
     try:
         action = parse_action_to_structure_output(
             ui_tars_response,
@@ -297,7 +377,7 @@ def ui_tars_execute(ui_tars_response: str) -> str:
             origin_resized_width=224,
         )[0]
         code = parsing_response_to_pyautogui_code(action, 224, 224)
-        eval(code)
+        exec(code)
     except Exception as e:
         return f"Error executing action: {str(e)}"
 
