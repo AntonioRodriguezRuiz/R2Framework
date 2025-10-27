@@ -151,9 +151,9 @@ def smart_resize(
 
 def parse_action_to_structure_output(
     text,
-    factor,
     origin_resized_height,
     origin_resized_width,
+    factor=IMAGE_FACTOR,
     model_type="qwen25vl",
     max_pixels=16384 * 28 * 28,
     min_pixels=100 * 28 * 28,
@@ -251,7 +251,7 @@ def parse_action_to_structure_output(
             if "start_box" in param_name or "end_box" in param_name:
                 ori_box = param
                 # Remove parentheses and split the string by commas
-                numbers = ori_box.replace("(", "").replace(")", "").split(",")
+                numbers = ori_box.split("(")[-1].split(")")[0].split(",")
 
                 # Convert to float and scale by 1000
                 # Qwen2.5vl output absolute coordinates, qwen2vl output relative coordinates
