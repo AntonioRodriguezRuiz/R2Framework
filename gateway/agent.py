@@ -11,7 +11,7 @@ from strands.models.openai import OpenAIModel
 from typing import Dict, Any
 from datetime import datetime
 
-from settings import PROVIDER_API_KEY, PROVIDER_API_BASE, PROVIDER_MODEL
+from settings import FREE_PROVIDER_API_KEY, PROVIDER_API_BASE, PROVIDER_MODEL
 from gateway.prompts import (
     GATEWAY_ORCHESTRATOR_PROMPT,
 )
@@ -29,7 +29,7 @@ def robot_exception_handler(exception: RobotExceptionRequest) -> str:
     """
     model = OpenAIModel(
         client_args={
-            "api_key": PROVIDER_API_KEY,
+            "api_key": FREE_PROVIDER_API_KEY,
             "base_url": PROVIDER_API_BASE,
         },
         model_id=PROVIDER_MODEL,
