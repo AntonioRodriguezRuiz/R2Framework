@@ -1,8 +1,14 @@
 from strands import tool
 import base64
 from PIL import Image
+import numpy as np
+from skimage.metrics import structural_similarity as ssim
+import cv2
 from io import BytesIO
 from pyautogui import screenshot
+
+
+IMAGE_SIMILARITY_THRESHOLD = 0.95  # Threshold for image similarity (0 to 1)
 
 
 @tool(description="Convert an image file to a base64-encoded string.")
@@ -70,6 +76,44 @@ def take_screenshot() -> list:
         return [{"image": {"format": "JPEG", "source": {"bytes": screenshot_bytes()}}}]
     except Exception as e:
         return [{"text": f"Error taking screenshot: {str(e)}"}]
+
+
+def compare_images(before_image: bytes, expected_change: bool) -> bool:
+    """
+    Compare two images and determine if they are identical.
+
+    Args:
+        before_image (bytes): The image bytes taken before the robot action. This one should be present in the chat history.
+        expected_change (bool): Whether a change is expected between the two images.
+
+    Returns:
+        bool: True if the comparison matches the expectation, False otherwise.
+    """
+    try:
+        after_image_cv2 = cv2.imdecode(
+            np.frombuffer(screenshot_bytes(), np.uint8), cv2.IMREAD_GRAYSCALE
+        )
+        before_image_cv2 = cv2.imdecode(
+            np.frombuffer(before_image, np.uint8), cv2.IMREAD_GRAYSCALE
+        )
+        # assert before_image.shape == after_image_cv2.shape, (
+        #     "Images must be the same size."
+        # )
+
+        # Compute SSIM between two images
+        ssim_index, _ = ssim(
+            before_image_cv2,
+            after_image_cv2,
+            full=True,
+            multichannel=True,
+        )
+
+        return (ssim_index < IMAGE_SIMILARITY_THRESHOLD) == expected_change
+
+    except Exception as _:
+        raise ValueError(
+            "Error comparing images. Use the take_screenshot() tool and judge the outcome yourself"
+        )
 
 
 def screenshot_bytes() -> bytes:

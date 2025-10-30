@@ -10,6 +10,7 @@ from settings import (
     PROVIDER_GROUNDING_MODEL,
     UI_ERROR_PLANNING,
 )
+from config import Config
 from modules.uierror.prompts import (
     RECOVERY_DIRECT_PROMPT,
     UI_EXCEPTION_HANDLER,
@@ -21,7 +22,7 @@ from modules.uierror.uitars import (
     parse_action_to_structure_output,
     parsing_response_to_pyautogui_code,
 )
-from agent_tools.image import screenshot_bytes, take_screenshot
+from agent_tools.image import screenshot_bytes, take_screenshot, compare_images
 
 
 @tool(
@@ -194,11 +195,7 @@ def recovery_agent(
         },
     ]
 
-    agent = Agent(
-        model=model,
-        messages=messages,
-        tools=[take_screenshot, ui_tars],
-    )
+    agent = Agent(model=model, messages=messages, tools=[take_screenshot, ui_tars])
     try:
         response = agent(
             f"Task: {task}\nAction History: {action_history}\nFailed Action: {failed_activity}\nFuture Activities: {future_activities}\nVariables: {variables}. DO NOT ASK FOR CONFIRMATION, execute the actions directly."
@@ -429,7 +426,9 @@ def step_execution_handler(
     name="ui_tars",
     description="A element and action ground model for UI tasks.",
 )
-def ui_tars(task: str, step_history: list, variables: dict) -> list:
+def ui_tars(
+    task: str, step_history: list, variables: dict, expect_ui_change: bool
+) -> list:
     """
     Grounds an action for the current UI state using the UITARS ML model.
 
@@ -437,6 +436,7 @@ def ui_tars(task: str, step_history: list, variables: dict) -> list:
         task (str): The task description (step)
         step_history (list): The history of steps taken so far
         variables (dict): A dictionary of variables used in the process
+        expect_ui_change(bool): Whether the action should trigger a noticable UI change (SSIM >= 0.95)
 
     Returns:
         Dictionary containing status and tool response:
@@ -458,6 +458,8 @@ Step History: {step_history}
 Variables: {variables}
 """
 
+    before_screenshot = screenshot_bytes()
+
     messages = [
         {
             "role": "user",
@@ -467,7 +469,7 @@ Variables: {variables}
                     "type": "image",
                     "image": {
                         "format": "jpeg",
-                        "source": {"bytes": screenshot_bytes()},
+                        "source": {"bytes": before_screenshot},
                     },
                 },
             ],
@@ -486,23 +488,47 @@ Variables: {variables}
     try:
         response = agent("")  # Empty input since all context is in messages
 
-        ui_tars_response = ""
-        try:
-            ui_tars_response = response.message.get("content", "")[0].get("text", "")
-        except Exception:
-            ui_tars_response = str(response)
+        iteration = 1
 
-        try:
-            action = parse_action_to_structure_output(
-                ui_tars_response,
-                origin_resized_height=1080,
-                origin_resized_width=1920,
-            )[0]
-            code = parsing_response_to_pyautogui_code(action, 1080, 1920)
-            exec(code)
-        except Exception as e:
-            return [{"text": f"Error executing action: {str(e)}"}]
+        while True:
+            ui_tars_response = ""
+            try:
+                ui_tars_response = response.message.get("content", "")[0].get(
+                    "text", ""
+                )
+            except Exception:
+                ui_tars_response = str(response)
+                break
 
-        return [{"text": "Action executed successfully."}]
+            try:
+                action = parse_action_to_structure_output(
+                    ui_tars_response,
+                    origin_resized_height=1080,
+                    origin_resized_width=1920,
+                )[0]
+                code = parsing_response_to_pyautogui_code(action, 1080, 1920)
+                exec(code)
+            except Exception as e:
+                if iteration >= Config.MAX_UI_ACTION_RETRIES:
+                    return [{"text": f"Error executing action: {str(e)}"}]
+                response = agent("The action failed. Try again")
+                iteration += 1
+                continue
+
+            if (
+                compare_images(before_screenshot, expect_ui_change)
+                or iteration >= Config.MAX_UI_ACTION_RETRIES
+            ):
+                break
+            else:
+                # Redefinition of response before starting the loop again.
+                response = agent("The action failed. Try again")
+            iteration += 1
+
+        return (
+            [{"text": "Action executed successfully."}]
+            if iteration < Config.MAX_UI_ACTION_RETRIES
+            else [{"text": "Action failed after maximum retries."}]
+        )
     except Exception as e:
         return [{"text": str(e)}]
