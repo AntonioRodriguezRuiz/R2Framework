@@ -12,6 +12,10 @@ from settings import (
     UI_MID_AGENT,
 )
 from config import Config
+from modules.uierror.agent_utils import (
+    ensure_required_type,
+    extract_agent_response_text,
+)
 from modules.uierror.prompts import (
     RECOVERY_DIRECT_PROMPT,
     STANDALONE_COMPUTER_USE_DOUBAO,
@@ -60,14 +64,10 @@ def ui_exception_handler(
         Error: Returns information about what went wrong.
     """
     # Validate inputs (fail fast if missing or wrong type)
-    assert action_history is not None, "action_history is required"
-    assert isinstance(action_history, list), "action_history must be a list"
-    assert failed_activity is not None, "failed_activity is required"
-    assert isinstance(failed_activity, dict), "failed_activity must be a dict"
-    assert future_activities is not None, "future_activities is required"
-    assert isinstance(future_activities, list), "future_activities must be a list"
-    assert variables is not None, "variables is required"
-    assert isinstance(variables, dict), "variables must be a dict"
+    ensure_required_type(action_history, "action_history", list)
+    ensure_required_type(failed_activity, "failed_activity", dict)
+    ensure_required_type(future_activities, "future_activities", list)
+    ensure_required_type(variables, "variables", dict)
 
     model = OpenAIModel(
         client_args={
@@ -104,21 +104,7 @@ def ui_exception_handler(
             f"Task: {task}\nAction History: {action_history}\nFailed Action: {failed_activity}\nFuture Activities: {future_activities}\nVariables: {variables}. DO NOT ASK FOR CONFIRMATION, execute the plan directly."
         )
 
-        # Try to extract text content if available
-        content_text = str(response)
-        try:
-            msg = getattr(response, "message", None)
-            if msg:
-                parts = []
-                for c in msg.get("content", []):
-                    if c.get("text"):
-                        parts.append(c.get("text"))
-                if parts:
-                    content_text = "\n".join(parts)
-        except Exception:
-            pass
-
-        return [{"text": content_text}]
+        return [{"text": extract_agent_response_text(response)}]
     except Exception as e:
         return [{"text": str(e)}]
 
@@ -155,12 +141,9 @@ def recovery_agent(
         Error: Returns information about what went wrong.
     """
     # Validate inputs (fail fast if missing or wrong type)
-    assert action_history is not None, "action_history is required"
-    assert isinstance(action_history, list), "action_history must be a list"
-    assert failed_activity is not None, "failed_activity is required"
-    assert isinstance(failed_activity, dict), "failed_activity must be a dict"
-    assert variables is not None, "variables is required"
-    assert isinstance(variables, dict), "variables must be a dict"
+    ensure_required_type(action_history, "action_history", list)
+    ensure_required_type(failed_activity, "failed_activity", dict)
+    ensure_required_type(variables, "variables", dict)
 
     model = OpenAIModel(
         client_args={
@@ -202,20 +185,7 @@ def recovery_agent(
             f"Task: {task}\nAction History: {action_history}\nFailed Action: {failed_activity}\nVariables: {variables}. DO NOT ASK FOR CONFIRMATION, execute the actions directly."
         )
 
-        content_text = str(response)
-        try:
-            msg = getattr(response, "message", None)
-            if msg:
-                parts = []
-                for c in msg.get("content", []):
-                    if c.get("text"):
-                        parts.append(c.get("text"))
-                if parts:
-                    content_text = "\n".join(parts)
-        except Exception:
-            pass
-
-        return [{"text": content_text}]
+        return [{"text": extract_agent_response_text(response)}]
     except Exception as e:
         return [{"text": str(e)}]
 
@@ -253,14 +223,10 @@ def recovery_plan_generator(
         Error: Returns information about what went wrong.
     """
     # Validate inputs (fail fast if missing or wrong type)
-    assert action_history is not None, "action_history is required"
-    assert isinstance(action_history, list), "action_history must be a list"
-    assert failed_activity is not None, "failed_activity is required"
-    assert isinstance(failed_activity, dict), "failed_activity must be a dict"
-    assert future_activities is not None, "future_activities is required"
-    assert isinstance(future_activities, list), "future_activities must be a list"
-    assert variables is not None, "variables is required"
-    assert isinstance(variables, dict), "variables must be a dict"
+    ensure_required_type(action_history, "action_history", list)
+    ensure_required_type(failed_activity, "failed_activity", dict)
+    ensure_required_type(future_activities, "future_activities", list)
+    ensure_required_type(variables, "variables", dict)
 
     model = OpenAIModel(
         client_args={
@@ -305,20 +271,7 @@ def recovery_plan_generator(
             f"Task: {task}\nAction History: {action_history}\nFailed Action: {failed_activity}\nFuture Activities: {future_activities}\nVariables: {variables}. DO NOT ASK FOR CONFIRMATION, execute the plan directly."
         )
 
-        content_text = str(response)
-        try:
-            msg = getattr(response, "message", None)
-            if msg:
-                parts = []
-                for c in msg.get("content", []):
-                    if c.get("text"):
-                        parts.append(c.get("text"))
-                if parts:
-                    content_text = "\n".join(parts)
-        except Exception:
-            pass
-
-        return [{"text": content_text}]
+        return [{"text": extract_agent_response_text(response)}]
     except Exception as e:
         return [{"text": str(e)}]
 
@@ -405,20 +358,7 @@ def step_execution_handler(
             f"Step: {step}\nStep History: {step_history}\nProcess Goal: {process_goal}\nVariables: {variables}\nIs Final Step: {is_final}"
         )
 
-        content_text = str(response)
-        try:
-            msg = getattr(response, "message", None)
-            if msg:
-                parts = []
-                for c in msg.get("content", []):
-                    if c.get("text"):
-                        parts.append(c.get("text"))
-                if parts:
-                    content_text = "\n".join(parts)
-        except Exception:
-            pass
-
-        return [{"text": content_text}]
+        return [{"text": extract_agent_response_text(response)}]
     except Exception as e:
         return [{"text": str(e)}]
 
