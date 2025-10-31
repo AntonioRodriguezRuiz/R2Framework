@@ -9,10 +9,12 @@ from settings import (
     PROVIDER_VISION_TOOL_MODEL,
     PROVIDER_GROUNDING_MODEL,
     UI_ERROR_PLANNING,
+    UI_MID_AGENT,
 )
 from config import Config
 from modules.uierror.prompts import (
     RECOVERY_DIRECT_PROMPT,
+    STANDALONE_COMPUTER_USE_DOUBAO,
     UI_EXCEPTION_HANDLER,
     RECOVERY_PLANNER_PROMPT,
     RECOVERY_STEP_EXECUTION_PROMPT,
@@ -88,6 +90,8 @@ def ui_exception_handler(
         [recovery_plan_generator, step_execution_handler]
         if UI_ERROR_PLANNING
         else [recovery_agent]
+        if UI_MID_AGENT
+        else [standalone_uitars]
     )
 
     agent = Agent(
@@ -127,7 +131,7 @@ def recovery_agent(
     task: str,
     action_history: list,
     failed_activity: dict,
-    future_activities: list,
+    # future_activities: list,
     variables: dict,
 ) -> list:
     """
@@ -137,7 +141,6 @@ def recovery_agent(
         task (str): The task description that the robot was trying to complete
         action_history (list): The history of actions taken by the robot (list)
         failed_activity (dict): The action that was expected to be performed but failed (dict)
-        future_activities (list): The list of future activities the robot planned to perform (list)
         variables (dict): A dictionary of variables used in the process
 
     Returns:
@@ -156,8 +159,6 @@ def recovery_agent(
     assert isinstance(action_history, list), "action_history must be a list"
     assert failed_activity is not None, "failed_activity is required"
     assert isinstance(failed_activity, dict), "failed_activity must be a dict"
-    assert future_activities is not None, "future_activities is required"
-    assert isinstance(future_activities, list), "future_activities must be a list"
     assert variables is not None, "variables is required"
     assert isinstance(variables, dict), "variables must be a dict"
 
@@ -198,7 +199,7 @@ def recovery_agent(
     agent = Agent(model=model, messages=messages, tools=[take_screenshot, ui_tars])
     try:
         response = agent(
-            f"Task: {task}\nAction History: {action_history}\nFailed Action: {failed_activity}\nFuture Activities: {future_activities}\nVariables: {variables}. DO NOT ASK FOR CONFIRMATION, execute the actions directly."
+            f"Task: {task}\nAction History: {action_history}\nFailed Action: {failed_activity}\nVariables: {variables}. DO NOT ASK FOR CONFIRMATION, execute the actions directly."
         )
 
         content_text = str(response)
@@ -530,5 +531,130 @@ Variables: {variables}
             if iteration < Config.MAX_UI_ACTION_RETRIES
             else [{"text": "Action failed after maximum retries."}]
         )
+    except Exception as e:
+        return [{"text": str(e)}]
+
+
+@tool(
+    name="standalone_uitars",
+    description="A element and action ground model for UI tasks.",
+)
+def standalone_uitars(
+    task: str,
+    action_history: list,
+    failed_activity: dict,
+    variables: dict,
+) -> list:
+    """
+    This function is to be called by the ui_exception_handler tool to execute a recovery plan for a UI error.
+
+    Args:
+        task (str): The task description that the robot was trying to complete
+        action_history (list): The history of actions taken by the robot (list)
+        failed_activity (dict): The action that was expected to be performed but failed (dict)
+        variables (dict): A dictionary of variables used in the process
+
+    Returns:
+        Dictionary containing status and tool response:
+        {
+            "toolUseId": "unique_id",
+            "status": "success|error",
+            "content": [{"text": "Recovery plan or error message"}]
+        }
+
+        Success: Returns a textual recovery plan or JSON-serializable plan in content[0]["text"].
+        Error: Returns information about what went wrong.
+    """
+
+    instruction = f"""
+Task: {task}
+Action History: {action_history}
+Failed Action: {failed_activity}
+Variables: {variables}
+"""
+
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "text": STANDALONE_COMPUTER_USE_DOUBAO.format(
+                        instruction=instruction
+                    )
+                },
+                {
+                    "type": "image",
+                    "image": {
+                        "format": "jpeg",
+                        "source": {"bytes": screenshot_bytes()},
+                    },
+                },
+            ],
+        },
+    ]
+
+    model = OpenAIModel(
+        client_args={"api_key": PROVIDER_API_KEY, "base_url": PROVIDER_API_BASE},
+        model_id=PROVIDER_GROUNDING_MODEL,
+    )
+
+    agent = Agent(
+        model=model,
+        messages=messages,
+    )
+    try:
+        response = agent("")  # Empty input since all context is in messages
+
+        iteration = 0
+
+        while True:
+            iteration += 1
+            if iteration > Config.MAX_ACTIONS_ALLOWED:
+                return [{"text": "Exceeded maximum allowed actions."}]
+
+            ui_tars_response = ""
+            try:
+                ui_tars_response = response.message.get("content", "")[0].get(
+                    "text", ""
+                )
+            except Exception:
+                ui_tars_response = str(response)
+                break
+
+            try:
+                action = parse_action_to_structure_output(
+                    ui_tars_response,
+                    origin_resized_height=1080,
+                    origin_resized_width=1920,
+                )[0]
+                code = parsing_response_to_pyautogui_code(action, 1080, 1920)
+
+                if code == "DONE":
+                    return [{"text": "Finished all required actions. Success"}]
+
+                exec(code)
+
+                new_messages = [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image",
+                                "image": {
+                                    "format": "jpeg",
+                                    "source": {"bytes": screenshot_bytes()},
+                                },
+                            },
+                        ],
+                    },
+                ]
+
+                response = agent(
+                    new_messages
+                )  # Empty input since all context is in messages
+            except Exception as _:
+                response = agent("The action failed. Try again")
+                continue
+
     except Exception as e:
         return [{"text": str(e)}]

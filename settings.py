@@ -23,3 +23,4 @@ PROVIDER_GROUNDING_MODEL = os.getenv("PROVIDER_GROUNDING_MODEL", "")
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 
 UI_ERROR_PLANNING = os.getenv("UI_ERROR_PLANNING", "false").lower() == "true"
+UI_MID_AGENT = os.getenv("UI_MID_AGENT", "false").lower() == "true"
