@@ -42,20 +42,16 @@ Disallowed action instructions:
 
 Identify the root cause and address it in your recovery plan. For example, if a popup is blocking the expected action, include a step to close the popup before proceeding, or if an element is not found, consider changing the navigation path to reach the desired state, as the original robot path may no longer be valid.
 
-Your final report, after calling all necessary tools and steps, should be a JSON object with the following structure:
-```json
-{
-  "reasoning": {
-    "failure_analysis": "Analysis of what may have caused the failure",
-    "root_cause": "UI flow change / timing issue / unexpected popup / incorrect input data / etc.",
-    "ui_state": "Description of the current UI state and how it differs from expected",
-    "recovery_approach": "General approach for recovery",
-    "challenges": "Potential challenges or alternative approaches"
-  },
-  "steps": ["Step 1", "Step 2", "Step 3", "..."],
-  "result": ["Success|Failure", "Success|Failure", "..."],
-  "final_outcome": "Success|Failure"
-}
+Your final report, after calling all necessary tools and steps, should include the following:
+- Reasoning and Steps
+  - Failure analysis: "Analysis of what may have caused the failure",
+  - Root cause: "UI flow change / timing issue / unexpected popup / incorrect input data / etc.",
+  - Ui state: "Description of the current UI state and how it differs from expected",
+  - Recovery approach: "General approach for recovery",
+  - Challenges: "Potential challenges or alternative approaches"
+- Steps: ["Step 1", "Step 2", "Step 3", "..."],
+- Result: ["Success|Failure", "Success|Failure", "..."],
+- Final outcome: "Success|Failure"
 ```
 
 Your reasoning should include:
@@ -92,19 +88,14 @@ Bear in mind that the UI error may have been caused by various factors, such as:
 
 Identify the root cause and address it in your recovery plan. For example, if a popup is blocking the expected action, include a step to close the popup before proceeding, or if an element is not found, consider changing the navigation path to reach the desired state, as the original robot path may no longer be valid.
 
-Your final report, after executing all steps, should be a JSON object with the following structure:
-```json
-{
-  "reasoning": {
-    "failure_analysis": "Analysis of what may have caused the failure",
-    "root_cause": "UI flow change / timing issue / unexpected popup / incorrect input data / etc.",
-    "ui_state": "Description of the current UI state and how it differs from expected",
-    "recovery_approach": "General approach for recovery",
-    "challenges": "Potential challenges or alternative approaches"
-  },
-  "steps": ["Step 1", "Step 2", "Step 3", "..."],
-}
-```
+Your final report, after executing all steps, should include the following:
+- Reasoning and Steps
+  - Failure analysis: "Analysis of what may have caused the failure"
+  - Root cause: "UI flow change / timing issue / unexpected popup / incorrect input data / etc."
+  - UI state: "Description of the current UI state and how it differs from expected"
+  - Recovery approach: "General approach for recovery"
+  - Challenges: "Potential challenges or alternative approaches"
+- Steps: ["Step 1", "Step 2", "Step 3", "..."]
 
 Your reasoning should include:
 1. Analysis of what may have caused the failure
@@ -154,39 +145,16 @@ Follow these guidelines:
 IMPORTANT:
 YOU CAN ONLY CALL ONCE THE TOOL TO EXECUTE THE RECOVERY PLAN OR ACTIONS. ONCE YOU CALL IT, YOU CANNOT CALL IT AGAIN.
 
-Your final report, after executing all steps, should be a JSON object with the following structure:
-```json
-{{
-  "reasoning": {{
-    "failure_analysis": "Analysis of what may have caused the failure",
-    "ui_state": "Description of the current UI state and how it differs from expected",
-    "recovery_approach": "General approach for recovery",
-    "challenges": "Potential challenges or alternative approaches"
-  }},
-  "steps": ["Step 1", "Step 2", "Step 3", "..."],
-  "result": "The recovery plan was successfully executed.",
-  "finish_activity": True|False,
-  "continue_from_step": <step number to continue from if not finished, using the index of the activity in futureActivities>
-}}
-```
-"""
-
-a = """
-### Example of a recovery plan report for the task "Login":
-```json
-{
-  "reasoning": {
-    "failure_analysis": "The robot expected to click on the 'Submit' button, but it was not visible due to a modal popup.",
-    "ui_state": "The current UI shows a modal popup that obscures the 'Submit' button.",
-    "recovery_approach": "Close the modal popup and then click on the 'Submit' button.",
-    "challenges": "The modal may take time to close, and the button may still be obscured."
-  },
-  "steps": [
-    "Close popup",
-    "Login"
-  ],
-  "result": "The recovery plan was successfully executed."
-}
+Your final report, after executing all steps, should include the following:
+- Reasoning and Steps
+  - Failure analysis: "Analysis of what may have caused the failure"
+  - UI state: "Description of the current UI state and how it differs from expected"
+  - Recovery approach: "General approach for recovery"
+  - Challenges: "Potential challenges or alternative approaches"
+- Steps: ["Step 1", "Step 2", "Step 3", "..."]
+- Result: "The recovery plan was successfully executed."
+- Finish activity: True|False
+- Continue from step: <step number from where the robot should continue execution, using the index of the activity in futureActivities>
 """
 
 RECOVERY_STEP_EXECUTION_PROMPT = """
@@ -209,12 +177,9 @@ You have given tasks that must be performed iteratively until you determine the 
 - Determine whether the step goal is achieved, needs to continue, needs replanning, or should be aborted.
 - If the step is not yet complete, repeat the process until the step is successfully executed or a replan/abort decision is made.
 
-If the step execution has reached its end, needs replanning, or should be aborted, you will return a JSON object with the following structure:
-```json
-{
-  "status": "success|replan|abort",
-  "message": "A message explaining the status",
-}
+If the step execution has reached its end or needs replanning, report the following information:
+- Status: "success|replan|abort"
+- Message: "A message explaining the status"
 ```
 """
 
@@ -316,16 +281,11 @@ Guidelines:
 3. Provide clear execution details (clicks, keyboard input, etc.)
 4. If an element isn't visible or the step cannot be completed, explain why and suggest alternatives
 
-Your response should be a JSON object with the following structure:
-```json
-{
-  "context_analysis": "Detailed explanation of your reasoning for identifying the action",
-  "action": {
-    "type": "LeftClick|RightClick|Type|Press|Finish|Scroll|Wait",
-    "target_id": "Description of the target element or text to type"
-  }
-}
-```
+Your response should include the following:
+- Context analysis: "Detailed explanation of your reasoning for identifying the action"
+- Action
+  - Type: "LeftClick|RightClick|Type|Press|Finish|Scroll|Wait"
+  - Target id: "Description of the target element or text to type"
 
 Possible action types:
 - "LeftClick": Click on a UI element

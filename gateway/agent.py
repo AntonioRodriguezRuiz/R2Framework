@@ -18,7 +18,10 @@ from gateway.prompts import (
 from gateway.models import RobotExceptionRequest
 
 from modules.uierror.agent import ui_exception_handler
+from gateway.templates import ResponseToRPA
 from agent_tools.database import available_modules
+
+from fastapi.responses import JSONResponse
 
 
 def robot_exception_handler(exception: RobotExceptionRequest) -> str:
@@ -57,18 +60,21 @@ def robot_exception_handler(exception: RobotExceptionRequest) -> str:
             f"Process this error notification and route the error:\n\nError Data: {exception}"
         )
 
-        return {
-            "status": "accepted",
-            "routing_response": response,
-            "timestamp": datetime.now().isoformat(),
-        }
+        response = agent.structured_output(
+            ResponseToRPA,
+            "Given the conversation history, provide a structured response for the given model.",
+        )
 
-    except Exception as e:
-        return {
-            "status": "error",
-            "error_message": f"Failed to process error notification: {str(e)}",
-            "timestamp": datetime.now().isoformat(),
-        }
+        return JSONResponse(
+            status_code=200,
+            content=response,
+        )
+
+    except Exception as _:
+        return JSONResponse(
+            status_code=500,
+            content="Failed to process error notification.",
+        )
 
 
 @tool(

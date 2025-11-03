@@ -29,6 +29,12 @@ from modules.uierror.uitars import (
     parsing_response_to_pyautogui_code,
 )
 from agent_tools.image import screenshot_bytes, take_screenshot, compare_images
+from modules.uierror.templates import (
+    RecoveryDirectReport,
+    RecoveryPlannerReport,
+    RecoveryStepExecutionResult,
+    UiExceptionReport,
+)
 
 
 @tool(
@@ -100,11 +106,16 @@ def ui_exception_handler(
         tools=[] + recovery_tools,
     )
     try:
-        response = agent(
+        agent(
             f"Task: {task}\nAction History: {action_history}\nFailed Action: {failed_activity}\nFuture Activities: {future_activities}\nVariables: {variables}. DO NOT ASK FOR CONFIRMATION, execute the plan directly."
         )
 
-        return [{"text": extract_agent_response_text(response)}]
+        response = agent.structured_output(
+            UiExceptionReport,
+            "Given our conversation so far, please provide a structured recovery report.",
+        )
+
+        return [{"text": str(response)}]
     except Exception as e:
         return [{"text": str(e)}]
 
@@ -181,11 +192,16 @@ def recovery_agent(
 
     agent = Agent(model=model, messages=messages, tools=[take_screenshot, ui_tars])
     try:
-        response = agent(
+        agent(
             f"Task: {task}\nAction History: {action_history}\nFailed Action: {failed_activity}\nVariables: {variables}. DO NOT ASK FOR CONFIRMATION, execute the actions directly."
         )
 
-        return [{"text": extract_agent_response_text(response)}]
+        response = agent.structured_output(
+            RecoveryDirectReport,
+            "Given our conversation so far, please provide a structured recovery report.",
+        )
+
+        return [{"text": str(response)}]
     except Exception as e:
         return [{"text": str(e)}]
 
@@ -267,11 +283,16 @@ def recovery_plan_generator(
         messages=messages,
     )
     try:
-        response = agent(
+        agent(
             f"Task: {task}\nAction History: {action_history}\nFailed Action: {failed_activity}\nFuture Activities: {future_activities}\nVariables: {variables}. DO NOT ASK FOR CONFIRMATION, execute the plan directly."
         )
 
-        return [{"text": extract_agent_response_text(response)}]
+        response = agent.structured_output(
+            RecoveryPlannerReport,
+            "Given our conversation so far, please provide a structured recovery plan.",
+        )
+
+        return [{"text": str(response)}]
     except Exception as e:
         return [{"text": str(e)}]
 
@@ -354,11 +375,16 @@ def step_execution_handler(
         tools=[ui_tars, take_screenshot],
     )
     try:
-        response = agent(
+        agent(
             f"Step: {step}\nStep History: {step_history}\nProcess Goal: {process_goal}\nVariables: {variables}\nIs Final Step: {is_final}"
         )
 
-        return [{"text": extract_agent_response_text(response)}]
+        response = agent.structured_output(
+            RecoveryStepExecutionResult,
+            "Given our conversation so far, please provide the structured step execution result.",
+        )
+
+        return [{"text": str(response)}]
     except Exception as e:
         return [{"text": str(e)}]
 
@@ -570,7 +596,7 @@ Variables: {variables}
                 code = parsing_response_to_pyautogui_code(action, 1080, 1920)
 
                 if code == "DONE":
-                    return [{"text": "Finished all required actions. Success"}]
+                    break
 
                 exec(code)
 
@@ -595,6 +621,14 @@ Variables: {variables}
             except Exception as _:
                 response = agent("The action failed. Try again")
                 continue
+
+        conversation_history = list(
+            map(
+                lambda m: m["content"],
+                filter(lambda m: m["role"] == "assistant", agent.messages),
+            )
+        )
+        return conversation_history
 
     except Exception as e:
         return [{"text": str(e)}]
