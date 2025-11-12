@@ -1,4 +1,4 @@
-from strands import Agent, tool
+from strands import Agent, ToolContext, tool
 from strands.models.openai import OpenAIModel
 from settings import (
     PROVIDER_API_BASE,
@@ -38,15 +38,16 @@ from modules.uierror.templates import (
 
 
 @tool(
-    name="ui_exception_handler",
     description="Generate a recovery plan for a UI error based on the provided task and action history.",
+    context=True,
 )
-def ui_exception_handler(
+async def ui_exception_handler(
     task: str,
     action_history: list,
     failed_activity: dict,
     future_activities: list,
     variables: dict,
+    tool_context: ToolContext,
 ) -> list:
     """
     Generate a recovery plan for a UI error based on the provided task and action history.
@@ -75,6 +76,10 @@ def ui_exception_handler(
     ensure_required_type(future_activities, "future_activities", list)
     ensure_required_type(variables, "variables", dict)
 
+    assert "websocket" in tool_context.invocation_state, (
+        "WebSocket must be provided in tool context"
+    )
+
     model = OpenAIModel(
         client_args={
             "api_key": FREE_PROVIDER_API_KEY,
@@ -93,7 +98,10 @@ def ui_exception_handler(
     ]
 
     recovery_tools = (
-        [recovery_plan_generator, step_execution_handler]
+        [
+            recovery_plan_generator,
+            step_execution_handler,
+        ]
         if UI_ERROR_PLANNING
         else [recovery_agent]
         if UI_MID_AGENT
@@ -106,13 +114,14 @@ def ui_exception_handler(
         tools=[] + recovery_tools,
     )
     try:
-        agent(
-            f"Task: {task}\nAction History: {action_history}\nFailed Action: {failed_activity}\nFuture Activities: {future_activities}\nVariables: {variables}. DO NOT ASK FOR CONFIRMATION, execute the plan directly."
+        await agent.invoke_async(
+            f"Task: {task}\nAction History: {action_history}\nFailed Action: {failed_activity}\nFuture Activities: {future_activities}\nVariables: {variables}. DO NOT ASK FOR CONFIRMATION, execute the plan directly.",
+            invocation_state={"websocket": tool_context.invocation_state["websocket"]},
         )
 
-        response = agent.structured_output(
-            UiExceptionReport,
+        response = await agent.invoke_async(
             "Given our conversation so far, please provide a structured recovery report.",
+            structured_output_model=UiExceptionReport,
         )
 
         return [{"text": str(response)}]
@@ -123,13 +132,15 @@ def ui_exception_handler(
 @tool(
     name="recovery_agent",
     description="Execute a recovery for a UI error based on the provided task and action history.",
+    context=True,
 )
-def recovery_agent(
+async def recovery_agent(
     task: str,
     action_history: list,
     failed_activity: dict,
     # future_activities: list,
     variables: dict,
+    tool_context: ToolContext,
 ) -> list:
     """
     This function is to be called by the ui_exception_handler tool to generate a recovery plan for a UI error.
@@ -156,6 +167,11 @@ def recovery_agent(
     ensure_required_type(failed_activity, "failed_activity", dict)
     ensure_required_type(variables, "variables", dict)
 
+    assert "websocket" in tool_context.invocation_state, (
+        "WebSocket must be provided in tool context"
+    )
+    websocket = tool_context.invocation_state["websocket"]
+
     model = OpenAIModel(
         client_args={
             "api_key": FREE_PROVIDER_API_KEY,
@@ -173,7 +189,7 @@ def recovery_agent(
                     "image": {
                         "format": "jpeg",
                         "source": {
-                            "bytes": screenshot_bytes(),
+                            "bytes": await screenshot_bytes(websocket),
                         },
                     },
                 },
@@ -192,13 +208,14 @@ def recovery_agent(
 
     agent = Agent(model=model, messages=messages, tools=[take_screenshot, ui_tars])
     try:
-        agent(
-            f"Task: {task}\nAction History: {action_history}\nFailed Action: {failed_activity}\nVariables: {variables}. DO NOT ASK FOR CONFIRMATION, execute the actions directly."
+        await agent.invoke_async(
+            f"Task: {task}\nAction History: {action_history}\nFailed Action: {failed_activity}\nVariables: {variables}. DO NOT ASK FOR CONFIRMATION, execute the actions directly.",
+            invocation_state={"websocket": websocket},
         )
 
-        response = agent.structured_output(
-            RecoveryDirectReport,
+        response = await agent.invoke_async(
             "Given our conversation so far, please provide a structured recovery report.",
+            structured_output_model=RecoveryDirectReport,
         )
 
         return [{"text": str(response)}]
@@ -209,13 +226,15 @@ def recovery_agent(
 @tool(
     name="recovery_plan_generator",
     description="Generate a recovery plan for a UI error based on the provided task and action history.",
+    context=True,
 )
-def recovery_plan_generator(
+async def recovery_plan_generator(
     task: str,
     action_history: list,
     failed_activity: dict,
     future_activities: list,
     variables: dict,
+    tool_context: ToolContext,
 ) -> list:
     """
     This function is to be called by the ui_exception_handler tool to generate a recovery plan for a UI error.
@@ -244,6 +263,11 @@ def recovery_plan_generator(
     ensure_required_type(future_activities, "future_activities", list)
     ensure_required_type(variables, "variables", dict)
 
+    assert "websocket" in tool_context.invocation_state, (
+        "WebSocket must be provided in tool context"
+    )
+    websocket = tool_context.invocation_state["websocket"]
+
     model = OpenAIModel(
         client_args={
             "api_key": FREE_PROVIDER_API_KEY,
@@ -261,7 +285,7 @@ def recovery_plan_generator(
                     "image": {
                         "format": "jpeg",
                         "source": {
-                            "bytes": screenshot_bytes(),
+                            "bytes": await screenshot_bytes(websocket),
                         },
                     },
                 },
@@ -278,18 +302,16 @@ def recovery_plan_generator(
         },
     ]
 
-    agent = Agent(
-        model=model,
-        messages=messages,
-    )
+    agent = Agent(model=model, messages=messages)
     try:
-        agent(
-            f"Task: {task}\nAction History: {action_history}\nFailed Action: {failed_activity}\nFuture Activities: {future_activities}\nVariables: {variables}. DO NOT ASK FOR CONFIRMATION, execute the plan directly."
+        await agent.invoke_async(
+            f"Task: {task}\nAction History: {action_history}\nFailed Action: {failed_activity}\nFuture Activities: {future_activities}\nVariables: {variables}. DO NOT ASK FOR CONFIRMATION, execute the plan directly.",
+            invocation_state={"websocket": websocket},
         )
 
-        response = agent.structured_output(
-            RecoveryPlannerReport,
+        response = await agent.invoke_async(
             "Given our conversation so far, please provide a structured recovery plan.",
+            structured_output_model=RecoveryPlannerReport,
         )
 
         return [{"text": str(response)}]
@@ -299,13 +321,15 @@ def recovery_plan_generator(
 
 @tool(
     description="Execute the steps provided in the recovery plan to resolve the UI error.",
+    context=True,
 )
-def step_execution_handler(
+async def step_execution_handler(
     step: str,
     step_history: list,
     process_goal: str,
     variables: dict,
     is_final: bool,
+    tool_context: ToolContext,
 ) -> list:
     """
     Execute the step provided in the recovery plan to resolve the UI error.
@@ -332,6 +356,11 @@ def step_execution_handler(
     process_goal = process_goal or ""
     variables = variables or {}
 
+    assert "websocket" in tool_context.invocation_state, (
+        "WebSocket must be provided in tool context"
+    )
+    websocket = tool_context.invocation_state["websocket"]
+
     model = OpenAIModel(
         client_args={
             "api_key": FREE_PROVIDER_API_KEY,
@@ -354,7 +383,7 @@ def step_execution_handler(
                     "type": "image",
                     "image": {
                         "format": "jpeg",
-                        "source": {"bytes": screenshot_bytes()},
+                        "source": {"bytes": await screenshot_bytes(websocket)},
                     },
                 },
             ],
@@ -369,19 +398,16 @@ def step_execution_handler(
         },
     ]
 
-    agent = Agent(
-        model=model,
-        messages=messages,
-        tools=[ui_tars, take_screenshot],
-    )
+    agent = Agent(model=model, messages=messages, tools=[ui_tars, take_screenshot])
     try:
-        agent(
-            f"Step: {step}\nStep History: {step_history}\nProcess Goal: {process_goal}\nVariables: {variables}\nIs Final Step: {is_final}"
+        await agent.invoke_async(
+            f"Step: {step}\nStep History: {step_history}\nProcess Goal: {process_goal}\nVariables: {variables}\nIs Final Step: {is_final}",
+            invocation_state={"websocket": websocket},
         )
 
-        response = agent.structured_output(
-            RecoveryStepExecutionResult,
+        response = await agent.invoke_async(
             "Given our conversation so far, please provide the structured step execution result.",
+            structured_output_model=RecoveryStepExecutionResult,
         )
 
         return [{"text": str(response)}]
@@ -392,9 +418,14 @@ def step_execution_handler(
 @tool(
     name="ui_tars",
     description="A element and action ground model for UI tasks.",
+    context=True,
 )
-def ui_tars(
-    task: str, step_history: list, variables: dict, expect_ui_change: bool
+async def ui_tars(
+    task: str,
+    step_history: list,
+    variables: dict,
+    expect_ui_change: bool,
+    tool_context: ToolContext,
 ) -> list:
     """
     Grounds an action for the current UI state using the UITARS ML model.
@@ -425,7 +456,12 @@ Step History: {step_history}
 Variables: {variables}
 """
 
-    before_screenshot = screenshot_bytes()
+    assert "websocket" in tool_context.invocation_state, (
+        "WebSocket must be provided in tool context"
+    )
+    websocket = tool_context.invocation_state["websocket"]
+
+    before_screenshot = await screenshot_bytes(websocket)
 
     messages = [
         {
@@ -448,12 +484,11 @@ Variables: {variables}
         model_id=PROVIDER_GROUNDING_MODEL,
     )
 
-    agent = Agent(
-        model=model,
-        messages=messages,
-    )
+    agent = Agent(model=model, messages=messages)
     try:
-        response = agent("")  # Empty input since all context is in messages
+        response = await agent.invoke_async(
+            ""
+        )  # Empty input since all context is in messages
 
         iteration = 1
 
@@ -474,7 +509,12 @@ Variables: {variables}
                     origin_resized_width=1920,
                 )[0]
                 code = parsing_response_to_pyautogui_code(action, 1080, 1920)
-                exec(code)
+
+                if code == "DONE":
+                    break
+
+                await websocket.send_json({"type": "code", "content": code})
+
             except Exception as e:
                 if iteration >= Config.MAX_UI_ACTION_RETRIES:
                     return [{"text": f"Error executing action: {str(e)}"}]
@@ -483,13 +523,13 @@ Variables: {variables}
                 continue
 
             if (
-                compare_images(before_screenshot, expect_ui_change)
+                compare_images(before_screenshot, expect_ui_change, websocket)
                 or iteration >= Config.MAX_UI_ACTION_RETRIES
             ):
                 break
             else:
                 # Redefinition of response before starting the loop again.
-                response = agent("The action failed. Try again")
+                response = await agent.invoke_async("The action failed. Try again")
             iteration += 1
 
         return (
@@ -504,12 +544,14 @@ Variables: {variables}
 @tool(
     name="standalone_uitars",
     description="A element and action ground model for UI tasks.",
+    context=True,
 )
-def standalone_uitars(
+async def standalone_uitars(
     task: str,
     action_history: list,
     failed_activity: dict,
     variables: dict,
+    tool_context: ToolContext,
 ) -> list:
     """
     This function is to be called by the ui_exception_handler tool to execute a recovery plan for a UI error.
@@ -539,6 +581,11 @@ Failed Action: {failed_activity}
 Variables: {variables}
 """
 
+    assert "websocket" in tool_context.invocation_state, (
+        "WebSocket must be provided in tool context"
+    )
+    websocket = tool_context.invocation_state["websocket"]
+
     messages = [
         {
             "role": "user",
@@ -552,7 +599,7 @@ Variables: {variables}
                     "type": "image",
                     "image": {
                         "format": "jpeg",
-                        "source": {"bytes": screenshot_bytes()},
+                        "source": {"bytes": await screenshot_bytes(websocket)},
                     },
                 },
             ],
@@ -564,12 +611,11 @@ Variables: {variables}
         model_id=PROVIDER_GROUNDING_MODEL,
     )
 
-    agent = Agent(
-        model=model,
-        messages=messages,
-    )
+    agent = Agent(model=model, messages=messages)
     try:
-        response = agent("")  # Empty input since all context is in messages
+        response = await agent.invoke_async(
+            ""
+        )  # Empty input since all context is in messages
 
         iteration = 0
 
@@ -598,7 +644,7 @@ Variables: {variables}
                 if code == "DONE":
                     break
 
-                exec(code)
+                await websocket.send_json({"type": "code", "content": code})
 
                 new_messages = [
                     {
@@ -608,14 +654,16 @@ Variables: {variables}
                                 "type": "image",
                                 "image": {
                                     "format": "jpeg",
-                                    "source": {"bytes": screenshot_bytes()},
+                                    "source": {
+                                        "bytes": await screenshot_bytes(websocket)
+                                    },
                                 },
                             },
                         ],
                     },
                 ]
 
-                response = agent(
+                response = await agent.invoke_async(
                     new_messages
                 )  # Empty input since all context is in messages
             except Exception as _:

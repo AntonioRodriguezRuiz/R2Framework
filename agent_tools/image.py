@@ -1,4 +1,5 @@
-from strands import tool
+from fastapi import WebSocket
+from strands import ToolContext, tool
 import base64
 from PIL import Image
 import numpy as np
@@ -6,6 +7,8 @@ from skimage.metrics import structural_similarity as ssim
 import cv2
 from io import BytesIO
 from pyautogui import screenshot
+import asyncio
+import json
 
 
 IMAGE_SIMILARITY_THRESHOLD = 0.95  # Threshold for image similarity (0 to 1)
@@ -53,8 +56,9 @@ def image_to_base64(image_path: str) -> list:
 
 @tool(
     description="Take a screenshot and return it as a base64-encoded string.",
+    context=True,
 )
-def take_screenshot() -> list:
+async def take_screenshot(tool_context: ToolContext) -> list:
     """
     Take a screenshot and return it as a base64-encoded string.
 
@@ -72,13 +76,28 @@ def take_screenshot() -> list:
         Success: Returns the screenshot bytes in the content as an image object.
         Error: Returns information about what went wrong.
     """
+
+    assert "websocket" in tool_context.invocation_state, (
+        "WebSocket connection is required in tool context for taking screenshot."
+    )
+    websocket = tool_context.invocation_state["websocket"]
+
     try:
-        return [{"image": {"format": "JPEG", "source": {"bytes": screenshot_bytes()}}}]
+        return [
+            {
+                "image": {
+                    "format": "JPEG",
+                    "source": {"bytes": await screenshot_bytes(websocket)},
+                }
+            }
+        ]
     except Exception as e:
         return [{"text": f"Error taking screenshot: {str(e)}"}]
 
 
-def compare_images(before_image: bytes, expected_change: bool) -> bool:
+async def compare_images(
+    before_image: bytes, expected_change: bool, websocket: WebSocket
+) -> bool:
     """
     Compare two images and determine if they are identical.
 
@@ -91,7 +110,8 @@ def compare_images(before_image: bytes, expected_change: bool) -> bool:
     """
     try:
         after_image_cv2 = cv2.imdecode(
-            np.frombuffer(screenshot_bytes(), np.uint8), cv2.IMREAD_GRAYSCALE
+            np.frombuffer(await screenshot_bytes(websocket), np.uint8),
+            cv2.IMREAD_GRAYSCALE,
         )
         before_image_cv2 = cv2.imdecode(
             np.frombuffer(before_image, np.uint8), cv2.IMREAD_GRAYSCALE
@@ -116,13 +136,55 @@ def compare_images(before_image: bytes, expected_change: bool) -> bool:
         )
 
 
-def screenshot_bytes() -> bytes:
+async def request_remote_screenshot(
+    websocket: WebSocket, timeout: float = 15.0
+) -> bytes:
+    """
+    Send a request over the provided WebSocket and wait for the client to send back a screenshot.
+
+    The client may respond in one of the following ways:
+    - send bytes directly (use `await websocket.receive_bytes()`)
+    - send a text message containing a base64-encoded image
+    - send a JSON message containing an image under keys like `image` or `image_base64`
+
+    Args:
+        websocket (WebSocket): Active FastAPI WebSocket connection to the client.
+        message (str): Message payload to send to the client asking for a screenshot.
+        timeout (float): Seconds to wait for the client's response.
+
+    Returns:
+        bytes: Raw image bytes (JPEG/PNG) as received or decoded from base64.
+
+    Raises:
+        TimeoutError: If no response is received within `timeout` seconds.
+        RuntimeError: For unexpected message formats or disconnections.
+    """
+
+    await websocket.send_json({"type": "request_screenshot", "content": ""})
+
+    try:
+        data = await asyncio.wait_for(websocket.receive_bytes(), timeout=timeout)
+        return data
+    except TimeoutError:
+        raise TimeoutError("Timed out waiting for screenshot from client")
+    except Exception as e:
+        raise RuntimeError(f"Unable to interpret client response as image: {e}")
+
+
+async def screenshot_bytes(websocket: WebSocket) -> bytes:
     """
     Take a screenshot and return it as bytes.
 
+    Args:
+        websocket (WebSocket): WebSocket connection to RPA robot
+
     Returns:
         bytes: Screenshot image data in bytes.
+
+    Usage:
+        screenshot_data = await screenshot_bytes(websocket)
     """
     buffer = BytesIO()
     screenshot().save(buffer, format="JPEG")
     return buffer.getvalue()
+    return await request_remote_screenshot(websocket)

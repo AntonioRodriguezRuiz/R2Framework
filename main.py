@@ -1,6 +1,6 @@
 # Initializes the FastAPI application and includes the main entry point.
 # It also sets up the database connection and includes the necessary routers.
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket
 from contextlib import asynccontextmanager
 import database.general as database
 from gateway.agent import robot_exception_handler
@@ -41,10 +41,17 @@ async def root():
     return {"message": "Welcome to the FastAPI application!"}
 
 
-@app.post("/robot_exception")
-async def handle_robot_exception(request: RobotExceptionRequest):
+@app.websocket("/robot_exception/ws")
+async def handle_robot_exception(websocket: WebSocket):
     """
     Passes the exception to the robot exception handler for processing.
     """
-    response = robot_exception_handler(request)
-    return response
+    await websocket.accept()
+    data = (
+        await websocket.receive_json()
+    )  # Will only accept one exception per connection
+    request = RobotExceptionRequest(**data)
+    response = await robot_exception_handler(request, websocket)
+    await websocket.send_json({"type": "done", "content": response})
+    await websocket.close()
+    return
