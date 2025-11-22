@@ -2,8 +2,11 @@ from typing import Annotated
 from fastapi.params import Depends
 from sqlmodel import SQLModel, Session, create_engine
 from gateway.models import *  # Needed for SQLModel to recognize the models defined in gateway.models
-from agent_tools.models import *  # Needed for SQLModel to recognize the models defined in tools.models
 from modules.models import *  # Needed for SQLModel to recognize the models defined in modules.models
+from .agents.models import *  # Needed for SQLModel to recognize the models defined in agents.models
+from .provider.models import *  # Needed for SQLModel to recognize the models defined in provider
+from .tools.models import *  # Needed for SQLModel to recognize the models defined in tools.models
+from .auth.models import *  # Needed for SQLModel to recognize the models defined in auth.models
 from settings import POSTGRES_URL
 import database.populators as populators
 

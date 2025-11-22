@@ -1,0 +1,362 @@
+from __future__ import annotations
+from abc import ABC
+
+import enum
+import uuid
+from fastapi._compat.v1 import RequestErrorModel
+from pydantic import BaseModel
+
+from importlib import import_module
+
+from fastapi import WebSocket
+from sqlmodel import SQLModel, Field, Relationship, Enum
+from sqlalchemy import Column
+from sqlalchemy.dialects.postgresql import JSON
+from typing import Optional, Any
+from datetime import datetime, timezone
+
+from sqlmodel.main import default_registry
+from strands.tools.decorator import DecoratedFunctionTool
+from strands.types.tools import JSONSchema
+from strands import Agent as StrandsAgent, ToolContext, tool
+
+from ..provider.models import Router
+from ..tools.models import Tool
+
+class Argument(SQLModel, table=True):
+    """
+    Defines an argument for an agent's input argument when calling it
+    """
+    id: uuid.UUID = Field(
+        default_factory=uuid.uuid4,
+        description="Unique identifier for the argument.",
+        primary_key=True,
+    )
+    name: str = Field(..., description="Name of the argument.")
+    description: str = Field(..., description="Description of the argument.")
+    type: str = Field(..., description="Python Type of the argument (e.g., str, int).")
+    json_type: str = Field(
+        ..., description="JSON Schema type of the argument (e.g., string, number)."
+    )
+
+    agent: "Agent" = Relationship(
+        back_populates="arguments",
+        sa_relationship_kwargs={"lazy": "joined"},
+    )
+
+    def __str__(self) -> str:
+        return f"{self.name}: {self.type} ({self.json_type}) - {self.description}"
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        # Validate that the type is a valid Python type
+        try:
+            eval(self.type)
+        except Exception as e:
+            raise ValueError(f"Invalid type '{self.type}' for argument '{self.name}': {e}")
+
+        try:
+            valid_json_types = {"string", "number", "integer", "boolean", "array", "object", "null"}
+            if self.json_type not in valid_json_types:
+                raise ValueError(f"Invalid JSON type '{self.json_type}' for argument '{self.name}'. Must be one of {valid_json_types}.")
+        except Exception as e:
+            raise ValueError(f"Invalid JSON type '{self.json_type}' for argument '{self.name}': {e}")
+
+        # Check python type and json type compatibility
+        type_mapping = {
+            "str": "string",
+            "int": "integer",
+            "float": "number",
+            "bool": "boolean",
+            "list": "array",
+            "dict": "object",
+        }
+        if self.type in type_mapping:
+            expected_json_type = type_mapping[self.type]
+            if self.json_type != expected_json_type:
+                raise ValueError(f"Type '{self.type}' is not compatible with JSON type '{self.json_type}' for argument '{self.name}'. Expected JSON type: '{expected_json_type}'.")
+
+class AgentType(str, enum.Enum):
+    Agent = "Agent"
+    GatewayAgent = "GatewayAgent"
+    GuiAgent = "GuiAgent"
+    ErrorAgent = "ErrorAgent"
+
+class Agent(SQLModel, table=True):
+    class InputType(str, enum.Enum):
+        TEXT = "TEXT"
+        IMAGETEXT = "IMAGETEXT"
+
+    id: uuid.UUID = Field(
+        default_factory=uuid.uuid4,
+        description="Unique identifier for the agent.",
+        primary_key=True,
+    )
+    name: str = Field(..., description="Name of the agent.")
+    description: str = Field(..., description="Description of the agent.")
+    prompt: str = Field(..., description="The prompt used to initialize the agent.")
+    # Used to import the pydantic model at runtime
+    response_model: Optional[str] = Field(
+        None,
+        description="The module path where the agent's structured response model is located.",
+    )
+    # TEXT, IMAGETEXT
+    input_type: InputType = Field(
+        ...,
+        sa_column=Column(
+            Enum(InputType),
+            nullable=False,
+            default=InputType.TEXT,
+        ),
+        description="The type of input the agent can process.",
+    )
+    enabled: bool = Field(
+        True, description="Indicates whether the agent is enabled or not."
+    )
+
+    arguments: list[Argument] = Relationship(
+        back_populates="agent",
+        sa_relationship_kwargs={"lazy": "joined"},
+    )
+
+    router: Router = Relationship(
+        back_populates="agents",
+        sa_relationship_kwargs={"lazy": "joined"},
+    )
+
+    tools: list["AgentTool"] = Relationship(
+        back_populates="agent",
+        sa_relationship_kwargs={"lazy": "joined"},
+    )
+    sub_agents: list["SubAgent"] = Relationship(
+        back_populates="parent_agent",
+        sa_relationship_kwargs={"lazy": "joined"},
+    )
+
+    created_at: datetime = Field(
+        default=datetime.now(timezone.utc),
+        description="Timestamp of when the agent was created.",
+    )
+    updated_at: datetime = Field(
+        default=datetime.now(timezone.utc),
+        description="Timestamp of when the agent was last updated.",
+    )
+
+    type: AgentType = Field( # Until polymorphism is supported by sqlmodel
+        ...,
+        sa_column=Column(
+            Enum(AgentType),
+            nullable=False,
+            default=AgentType.Agent,
+        ),
+        description="The type of the agent.",
+    )
+
+    __mapper_args__ = {
+        "polymorphic_identity": "Agent",
+        "polymorphic_abstract": True,
+        "polymorphic_on": "type",
+    }
+
+    def get_tools(self) -> list[Tool]:
+        """Return the list of tools associated with the agent."""
+        return [at.tool for at in self.tools]
+
+    def get_sub_agents(self) -> list["Agent"]:
+        """Return the list of sub-agents associated with the agent."""
+        return [sa.child_agent for sa in self.sub_agents]
+
+    def as_tool(self) -> DecoratedFunctionTool:
+        """Dynamically creates the agent tool function for usage within other agents."""
+        @tool(
+            name=self.name,
+            description=self.description,
+            inputSchema=self.get_input_schema(),
+            context=True,
+        )
+        async def agent_tool_function(tool_context: ToolContext, *args, **kwargs) -> list:
+            if not "websocket" in tool_context.invocation_state:
+                raise ValueError("WebSocket must be provided in tool context invocation state.")
+
+            websocket: WebSocket = tool_context.invocation_state["websocket"]
+            invocation_state: dict[str, Any] = {"websocket": websocket}
+
+            return await self(invocation_state=invocation_state)
+
+        return agent_tool_function
+
+    def get_input_schema(self) -> JSONSchema:
+        """
+        Dinamically computes the tool input schema override based on the agent's defined arguments.
+
+        Example:
+            {
+                    "json": {
+                        "type": "object",
+                        "properties": {
+                            "shape": {
+                                "type": "string",
+                                "enum": ["circle", "rectangle"],
+                                "description": "The shape type"
+                            },
+                            "radius": {"type": "number", "description": "Radius for circle"},
+                            "width": {"type": "number", "description": "Width for rectangle"},
+                            "height": {"type": "number", "description": "Height for rectangle"}
+                        },
+                        "required": ["shape"]
+                    }
+                }
+        """
+        properties = {}
+        required = []
+        for arg in self.arguments:
+            prop = {"type": arg.json_type, "description": arg.description}
+            properties[arg.name] = prop
+            required.append(arg.name)
+
+        input_schema = {
+            "type": "object",
+            "properties": properties,
+            "required": required,
+        }
+        return JSONSchema(json=input_schema)
+
+    def validate_input(self, *args, **kwargs) -> None:
+        """
+        Validate the input arguments against the agent's defined arguments.
+        We expect all arguments to be provided either as keyword arguments.
+        """
+        if len(args) + len(kwargs) != len(self.arguments):
+            raise ValueError(f"Expected {len(self.arguments)} arguments, got {len(args) + len(kwargs)}.")
+
+        for i, arg in enumerate(self.arguments):
+            if i < len(args):
+                value = args[i]
+            else:
+                value = kwargs.get(arg.name)
+
+            if value is None:
+                raise ValueError(f"Missing required argument: {arg.name}")
+
+            expected_type = eval(arg.type)
+            if not isinstance(value, expected_type):
+                raise TypeError(f"Argument '{arg.name}' expected type '{arg.type}', got '{type(value).__name__}'.")
+
+    def get_pydantic_response_model(self) -> type[BaseModel] | None:
+        """Dynamically import and return the agent's structured response pydantic model."""
+        if not self.response_model:
+            return None
+
+        module_path, class_name = self.response_model.rsplit('.', 1)
+        try:
+            module = import_module(module_path)
+        except Exception as e:
+            raise ImportError(f"Could not import module '{module_path}': {e}")
+        try:
+            model_class: type[Any] = getattr(module, class_name)
+        except Exception as e:
+            raise ImportError(f"Could not find class '{class_name}' in module '{module_path}': {e}")
+        if not issubclass(model_class, BaseModel):
+            raise ValueError(f"The class '{self.response_model}' is not a valid Pydantic model.")
+        return model_class
+
+    async def __call__(self, invocation_state: dict[str, Any] = {}, *args, **kwargs) -> list:
+        """
+        Dinamically computes tools, subagents, output model and input validation. Calls the agent and returns the final structered response.
+        """
+        self.validate_input(*args, **kwargs)
+
+        tools: list[DecoratedFunctionTool] = [t.get_tool_function() for t in self.get_tools()]
+        sub_agent_tools: list[DecoratedFunctionTool] = [sa.as_tool() for sa in self.get_sub_agents()]
+
+        # TODO: Message definition depending of input type
+        messages = [
+            {"role": "system", "content": {"text": self.prompt}},
+            {"role": "user", "content": "I understand the instructions. I will proceed once you give me all neccesary values."}
+        ]
+
+        model = self.router.get_model()
+
+        strands_agent = StrandsAgent(
+            model=model,
+            tools=tools + sub_agent_tools,
+            messages=messages,
+        )
+
+        try:
+            instruction = "\n".join(
+                [f"{arg.name}: {kwargs.get(arg.name)}" for arg in self.arguments]
+            )
+
+            await strands_agent.invoke_async(
+                instruction,
+                invocation_state=invocation_state,
+            )
+
+            response = await strands_agent.invoke_async(
+                "Given our conversation so far, please provide a structured recovery report.",
+                structured_output_model=self.get_pydantic_response_model(),
+            )
+
+            return [{"text": str(response)}]
+        except Exception as e:
+            return [{"text": str(e)}]
+
+    def __init__(self, **data: Any) -> None:
+        super().__init__(**data)
+        # Validate that the response model can be imported successfully
+        self.get_pydantic_response_model()
+
+class SubAgent(SQLModel, table=True):
+    id: uuid.UUID = Field(
+        default_factory=uuid.uuid4,
+        description="Unique identifier for the sub-agent.",
+        primary_key=True,
+    )
+    parent_agent: Agent = Relationship(
+        back_populates="sub_agents",
+        sa_relationship_kwargs={"lazy": "joined"},
+    )
+    child_agent: Agent = Relationship(
+        sa_relationship_kwargs={"lazy": "joined"},
+    )
+
+    created_at: datetime = Field(
+        default=datetime.now(timezone.utc),
+        description="Timestamp of when the sub-agent association was created.",
+    )
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        if self.parent_agent.id == self.child_agent.id:
+            raise ValueError("An agent cannot be a sub-agent of itself.")
+
+
+class AgentTool(SQLModel, table=True):
+    id: uuid.UUID = Field(
+        default_factory=uuid.uuid4,
+        description="Unique identifier for the agent-tool association.",
+        primary_key=True,
+    )
+    agent: Agent = Relationship(
+        back_populates="tools",
+        sa_relationship_kwargs={"lazy": "joined"},
+    )
+    tool: Tool = Relationship(
+        back_populates="agents",
+        sa_relationship_kwargs={"lazy": "joined"},
+    )
+
+    limit: Optional[int] = Field(
+        None,
+        description="Optional limit on the number of times the tool can be called by the agent.",
+    )
+    required: bool = Field(
+        False,
+        description="Indicates whether the tool must be called by the agent at least once.",
+    )
+
+    created_at: datetime = Field(
+        default=datetime.now(timezone.utc),
+        description="Timestamp of when the agent-tool association was created.",
+    )

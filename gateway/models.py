@@ -6,7 +6,6 @@ from sqlalchemy.dialects.postgresql import JSON
 from typing import Optional
 from datetime import datetime
 from gateway.enums import ExceptionType
-from agent_tools.links import ToolModuleLink
 import uuid
 from pydantic import BaseModel
 
@@ -37,11 +36,6 @@ class Module(SQLModel, table=True):
         description="The name of the tool used for routing exceptions to this module. This should be the name of a tool that is registered in the system.",
     )
     # restrictions: Optional[list[str]] = Field(None, description="List of restrictions for the module, if any. (eg. 'no access to UI')")
-    tools: list["Tool"] = Relationship(  # noqa
-        back_populates="modules",
-        sa_relationship_kwargs={"lazy": "joined"},
-        link_model=ToolModuleLink,
-    )
 
     def to_json(self) -> dict:
         """Convert the model to a dictionary structure."""
@@ -52,11 +46,6 @@ class Module(SQLModel, table=True):
             "description": self.description,
             "enabled": self.enabled,
             "routing_tool": self.routing_tool,
-            "tools": [
-                str(tool.id) if hasattr(tool, "id") else tool for tool in self.tools
-            ]
-            if self.tools
-            else [],
         }
 
 

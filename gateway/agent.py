@@ -47,7 +47,7 @@ async def robot_exception_handler(
             messages=[
                 {
                     "role": "user",
-                    "content": [{"type": "text", "text": GATEWAY_ORCHESTRATOR_PROMPT}],
+                    "content": [{"text": GATEWAY_ORCHESTRATOR_PROMPT}],
                 },
                 {"role": "assistant", "content": [{"text": "okay"}]},
             ],
