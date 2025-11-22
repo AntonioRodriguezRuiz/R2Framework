@@ -1,11 +1,11 @@
 import enum
 import uuid
-
-from sqlmodel import SQLModel, Field, Relationship, Enum, Column
 from datetime import datetime, timezone
 
+from sqlmodel import Column, Enum, Field, Relationship, SQLModel
 from strands.models import Model
 from strands.models.openai import OpenAIModel
+
 
 class Router(SQLModel, table=True):
     class Provider(str, enum.Enum):
@@ -21,13 +21,17 @@ class Router(SQLModel, table=True):
     model_name: str = Field(..., description="Name of the model used by the router.")
     api_endpoint: str = Field(..., description="API endpoint of the provider.")
     provider_type: Provider = Field(
-        ...,
+        Provider.OPENAI,
         sa_column=Column(
             Enum(Provider),
             nullable=False,
             default=Provider.OPENAI,
         ),
         description="The type of input the agent can process.",
+    )
+
+    agents: list["Agent"] = Relationship(
+        back_populates="router",
     )
 
     created_at: datetime = Field(
