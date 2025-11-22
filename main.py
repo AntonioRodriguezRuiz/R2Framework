@@ -1,6 +1,7 @@
 # Initializes the FastAPI application and includes the main entry point.
 # It also sets up the database connection and includes the necessary routers.
 from fastapi import FastAPI, WebSocket
+from scalar_fastapi import get_scalar_api_reference
 from contextlib import asynccontextmanager
 import database.general as database
 from gateway.agent import robot_exception_handler
@@ -36,9 +37,14 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 
-@app.get("/")
+@app.get("/scalar", include_in_schema=False)
 async def root():
-    return {"message": "Welcome to the FastAPI application!"}
+    return get_scalar_api_reference(
+        # Your OpenAPI document
+        openapi_url=app.openapi_url,
+        # Avoid CORS issues (optional)
+        scalar_proxy_url="https://proxy.scalar.com",
+    )
 
 
 @app.websocket("/robot_exception/ws")
