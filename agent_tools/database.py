@@ -1,7 +1,7 @@
-from strands import tool
-from database.general import general_engine
-from gateway.models import Module
 from sqlmodel import Session, select
+from strands import tool
+
+from gateway.models import Module
 
 
 @tool(name="available_modules", description="List all available modules in the system.")
@@ -23,6 +23,8 @@ def available_modules() -> list:
         Success: Returns a JSON list of available modules under content[0]["json"].
         Error: Returns information about what went wrong.
     """
+    from database.general import general_engine
+
     try:
         with Session(general_engine) as session:
             modules = session.exec(select(Module)).unique()
