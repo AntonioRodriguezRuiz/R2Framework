@@ -1,12 +1,15 @@
 # Initializes the FastAPI application and includes the main entry point.
 # It also sets up the database connection and includes the necessary routers.
-from fastapi import FastAPI, WebSocket
+import logging
 from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, WebSocket
+from sqlmodel import Session, select
+from strands.telemetry import StrandsTelemetry
+
 import database.general as database
 from gateway.agent import robot_exception_handler
 from gateway.models import RobotExceptionRequest
-from strands.telemetry import StrandsTelemetry
-import logging
 
 
 @asynccontextmanager
@@ -50,8 +53,23 @@ async def handle_robot_exception(websocket: WebSocket):
     data = (
         await websocket.receive_json()
     )  # Will only accept one exception per connection
-    request = RobotExceptionRequest(**data)
-    response = await robot_exception_handler(request, websocket)
+
+    # Grab the gatewayagent from db
+    with Session(database.general_engine) as session:
+        agent = session.exec(select(database.Agent)).first()
+        if not agent:
+            await websocket.send_json(
+                {
+                    "type": "done",
+                    "content": "No GatewayAgent found in the database.",
+                }
+            )
+            await websocket.close()
+            return
+
+        invocation_state = {"websocket": websocket}
+        response = await agent(invocation_state=invocation_state, **data)
+
     await websocket.send_json({"type": "done", "content": response})
     await websocket.close()
     return

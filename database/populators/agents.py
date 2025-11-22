@@ -278,7 +278,18 @@ def populate_agents(engine) -> None:
         ui_exception_handler_agent = _create_agent(
             session=session,
             name="UI Exception Handler",
-            description="Analyzes UI-related execution failures and orchestrates visual recovery strategies.",
+            description="""## Agent description
+            Module responsible for managing UI-related errors.
+            This module has access to the current UI state via screenshots and is provided with visual information about the moment where execution failed.
+            It specializes in identifying and resolving issues related to user interface interactions, element detection, and visual validation failures.
+
+            ## Module restrictions
+            - Must have access to current UI via screenshots
+            - Must be provided visual information about execution failure moment
+
+            ## Example error types
+            - Error raised when a UI element cannot be located
+            """,
             prompt=UI_EXCEPTION_HANDLER,
             response_model="modules.uierror.templates.UiExceptionReport",
             args=ui_handler_args,

@@ -13,8 +13,11 @@ from strands import ToolContext, tool
 from strands.tools.decorator import DecoratedFunctionTool
 from strands.types.tools import JSONSchema
 
+from agent_tools.image import screenshot_bytes
+
 from ..provider.models import Router
 from ..tools.models import Tool
+from .uitars import standalone_uitars
 
 
 class Argument(SQLModel, table=True):
@@ -192,6 +195,10 @@ class Agent(SQLModel, table=True):
     def as_tool(self) -> DecoratedFunctionTool:
         """Dynamically creates the agent tool function for usage within other agents."""
 
+        ## Temporary fix until polymorphism is supported by sqlmodel
+        if self.type == AgentType.GuiAgent:  # Actually only supports uitars
+            return standalone_uitars
+
         @tool(
             name=self.name,
             description=self.description,
@@ -311,9 +318,29 @@ class Agent(SQLModel, table=True):
             sa.as_tool() for sa in self.get_sub_agents()
         ]
 
-        # TODO: Message definition depending of input type
         messages = [
-            {"role": "system", "content": {"text": self.prompt}},
+            {
+                "role": "system",
+                "content": [
+                    {
+                        "text": self.prompt,
+                    },
+                    {
+                        "image": {
+                            "format": "jpeg",
+                            "source": {
+                                "bytes": await screenshot_bytes(websocket),
+                            },
+                        },
+                    },
+                ]
+                if self.input_type == self.InputType.IMAGETEXT
+                else [
+                    {
+                        "text": self.prompt,
+                    },
+                ],
+            },
             {
                 "role": "user",
                 "content": "I understand the instructions. I will proceed once you give me all neccesary values.",
