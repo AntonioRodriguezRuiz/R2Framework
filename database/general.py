@@ -8,10 +8,10 @@ from settings import POSTGRES_URL
 
 # from gateway.models import *  # Needed for SQLModel to recognize the models defined in gateway.models
 # from modules.models import *  # Needed for SQLModel to recognize the models defined in modules.models
-from .agents.models import *  # Needed for SQLModel to recognize the models defined in agents.models
-from .auth.models import *  # Needed for SQLModel to recognize the models defined in auth.models
-from .provider.models import *  # Needed for SQLModel to recognize the models defined in provider
-from .tools.models import *  # Needed for SQLModel to recognize the models defined in tools.models
+from .agents.models import *  # noqa: F403 Needed for SQLModel to recognize the models defined in agents.models
+from .auth.models import *  # noqa: F403 # Needed for SQLModel to recognize the models defined in auth.models
+from .provider.models import *  # noqa: F403 Needed for SQLModel to recognize the models defined in provider
+from .tools.models import *  # noqa: F403 Needed for SQLModel to recognize the models defined in tools.models
 
 # Database one: General purpose, postgresql
 

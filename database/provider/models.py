@@ -1,6 +1,6 @@
 import enum
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlmodel import Column, Enum, Field, Relationship, SQLModel
 from strands.models import Model

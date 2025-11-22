@@ -1,13 +1,15 @@
 # Defines the data models for the gateway service
 
-from sqlmodel import SQLModel, Field, Relationship
+import uuid
+from datetime import datetime
+from typing import Optional
+
+from pydantic import BaseModel
 from sqlalchemy import Column
 from sqlalchemy.dialects.postgresql import JSON
-from typing import Optional
-from datetime import datetime
+from sqlmodel import Field, SQLModel
+
 from gateway.enums import ExceptionType
-import uuid
-from pydantic import BaseModel
 
 
 class Module(SQLModel, table=True):

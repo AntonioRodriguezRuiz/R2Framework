@@ -1,13 +1,11 @@
-from ast import Call
+import uuid
+from datetime import datetime, timezone
 from importlib import import_module
 from typing import Callable
 
-from sqlmodel import SQLModel, Field
-from datetime import datetime, timezone
-
+from sqlmodel import Field, SQLModel
 from strands.tools.decorator import DecoratedFunctionTool
 
-import uuid
 
 class Tool(SQLModel, table=True):
     id: uuid.UUID = Field(
@@ -22,7 +20,7 @@ class Tool(SQLModel, table=True):
     fn_module: str = Field(
         ...,
         description="The module path where the tool function is located.",
-        unique=True
+        unique=True,
     )
 
     created_at: datetime = Field(
@@ -36,7 +34,7 @@ class Tool(SQLModel, table=True):
 
     def get_tool_function(self) -> DecoratedFunctionTool:
         """Dynamically import and return the tool function."""
-        module_path, function_name = self.fn_module.rsplit('.', 1)
+        module_path, function_name = self.fn_module.rsplit(".", 1)
         try:
             module = import_module(module_path)
         except Exception as e:
@@ -44,10 +42,14 @@ class Tool(SQLModel, table=True):
         try:
             fn: Callable = getattr(module, function_name)
         except Exception as e:
-            raise ImportError(f"Could not find function '{function_name}' in module '{module_path}': {e}")
+            raise ImportError(
+                f"Could not find function '{function_name}' in module '{module_path}': {e}"
+            )
         # Check it has the @tool decorator by looking for the 'name' attribute
         if not isinstance(fn, DecoratedFunctionTool):
-            raise ValueError(f"The function '{self.fn_module}' is not a valid tool. Make sure it is decorated with @tool.")
+            raise ValueError(
+                f"The function '{self.fn_module}' is not a valid tool. Make sure it is decorated with @tool."
+            )
         return fn
 
     # Override validation to check the tool can be imported and fn exists

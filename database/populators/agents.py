@@ -37,14 +37,14 @@ from database.tools.models import Tool
 
 # Prompts & response models
 from gateway.prompts import GATEWAY_ORCHESTRATOR_PROMPT
-from gateway.templates import ResponseToRPA
+from gateway.templates import ResponseToRPA  # noqa: F401
 from modules.uierror.prompts import (
     RECOVERY_DIRECT_PROMPT,
     RECOVERY_PLANNER_PROMPT,
     RECOVERY_STEP_EXECUTION_PROMPT,
     UI_EXCEPTION_HANDLER,
 )
-from modules.uierror.templates import (
+from modules.uierror.templates import (  # noqa: F401
     RecoveryDirectReport,
     RecoveryPlannerReport,
     RecoveryStepExecutionResult,

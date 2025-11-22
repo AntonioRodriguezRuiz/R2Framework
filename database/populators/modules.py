@@ -1,8 +1,8 @@
 # This file defines the different modules that can be used in the database.
 
 from sqlmodel import Session, select
+
 from gateway.models import Module
-from gateway.enums import ExceptionType
 
 
 def populate_modules(engine):

@@ -1,18 +1,13 @@
 import enum
 import uuid
-from abc import ABC
 from datetime import datetime, timezone
 from importlib import import_module
 from typing import Any, Optional
 
 from fastapi import WebSocket
-from fastapi._compat.v1 import RequestErrorModel
 from pydantic import BaseModel
-from sqlalchemy import Column, case
-from sqlalchemy.dialects.postgresql import JSON
-from sqlalchemy.orm import relationship
+from sqlalchemy import Column
 from sqlmodel import Enum, Field, Relationship, SQLModel
-from sqlmodel.main import default_registry
 from strands import Agent as StrandsAgent
 from strands import ToolContext, tool
 from strands.tools.decorator import DecoratedFunctionTool
