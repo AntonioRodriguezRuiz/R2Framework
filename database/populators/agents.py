@@ -428,6 +428,7 @@ def populate_agents(engine) -> None:
         )
         _attach_tools(session, standalone_uitars_agent, [])
 
+        _create_sub_agent(session, gateway_agent, ui_exception_handler_agent)
         # Build sub-agent hierarchy under UI Exception Handler
         _create_sub_agent(session, ui_exception_handler_agent, direct_recovery_agent)
         _create_sub_agent(session, ui_exception_handler_agent, plan_generator_agent)

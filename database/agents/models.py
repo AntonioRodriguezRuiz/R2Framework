@@ -11,7 +11,7 @@ from sqlmodel import Enum, Field, Relationship, SQLModel
 from strands import Agent as StrandsAgent
 from strands import ToolContext, tool
 from strands.tools.decorator import DecoratedFunctionTool
-from strands.types.tools import JSONSchema
+from typing_extensions import Dict
 
 from agent_tools.image import screenshot_bytes
 
@@ -184,6 +184,10 @@ class Agent(SQLModel, table=True):
     #     "polymorphic_on": "type",
     # }
 
+    def get_tool_name(self) -> str:
+        """Return the name of the agent as a valid tool name."""
+        return self.name.lower().replace(" ", "_")
+
     def get_tools(self) -> list[Tool]:
         """Return the list of tools associated with the agent."""
         return [at.tool for at in self.tools]
@@ -200,14 +204,12 @@ class Agent(SQLModel, table=True):
             return standalone_uitars
 
         @tool(
-            name=self.name,
+            name=self.get_tool_name(),
             description=self.description,
             inputSchema=self.get_input_schema(),
             context=True,
         )
-        async def agent_tool_function(
-            tool_context: ToolContext, *args, **kwargs
-        ) -> list:
+        async def agent_tool_function(tool_context: ToolContext) -> list:
             if "websocket" not in tool_context.invocation_state:
                 raise ValueError(
                     "WebSocket must be provided in tool context invocation state."
@@ -216,11 +218,14 @@ class Agent(SQLModel, table=True):
             websocket: WebSocket = tool_context.invocation_state["websocket"]
             invocation_state: dict[str, Any] = {"websocket": websocket}
 
-            return await self(invocation_state=invocation_state)
+            return await self(
+                invocation_state=invocation_state,
+                **tool_context.tool_use.get("input", {}),
+            )
 
         return agent_tool_function
 
-    def get_input_schema(self) -> JSONSchema:
+    def get_input_schema(self) -> Dict[str, Any]:
         """
         Dinamically computes the tool input schema override based on the agent's defined arguments.
 
@@ -250,11 +255,13 @@ class Agent(SQLModel, table=True):
             required.append(arg.name)
 
         input_schema = {
-            "type": "object",
-            "properties": properties,
-            "required": required,
+            "json": {
+                "type": "object",
+                "properties": properties,
+                "required": required,
+            }
         }
-        return JSONSchema(json=input_schema)
+        return input_schema
 
     def validate_input(self, *args, **kwargs) -> None:
         """
@@ -343,7 +350,11 @@ class Agent(SQLModel, table=True):
             },
             {
                 "role": "user",
-                "content": "I understand the instructions. I will proceed once you give me all neccesary values.",
+                "content": [
+                    {
+                        "text": "I understand the instructions. I will proceed once you give me all neccesary values.",
+                    }
+                ],
             },
         ]
 

@@ -56,7 +56,11 @@ async def handle_robot_exception(websocket: WebSocket):
 
     # Grab the gatewayagent from db
     with Session(database.general_engine) as session:
-        agent = session.exec(select(database.Agent)).first()
+        agent = session.exec(
+            select(database.Agent).where(
+                database.Agent.type == database.AgentType.GatewayAgent
+            )
+        ).first()
         if not agent:
             await websocket.send_json(
                 {

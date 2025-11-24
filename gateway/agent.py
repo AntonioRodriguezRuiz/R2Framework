@@ -7,22 +7,21 @@ recovery modules for resolution.
 """
 
 from functools import partial
+from typing import Any, Dict
 
+from fastapi import WebSocket
 from strands import Agent, ToolContext, tool
 from strands.models.openai import OpenAIModel
-from typing import Dict, Any
 
-from settings import FREE_PROVIDER_API_KEY, PROVIDER_API_BASE, PROVIDER_MODEL
+from agent_tools.database import available_modules
+from gateway.models import RobotExceptionRequest
 from gateway.prompts import (
     GATEWAY_ORCHESTRATOR_PROMPT,
 )
-from gateway.models import RobotExceptionRequest
 
-from modules.uierror.agent import ui_exception_handler
+# from modules.uierror.agent import ui_exception_handler
 from gateway.templates import ResponseToRPA
-from agent_tools.database import available_modules
-
-from fastapi import WebSocket
+from settings import FREE_PROVIDER_API_KEY, PROVIDER_API_BASE, PROVIDER_MODEL
 
 
 async def robot_exception_handler(
@@ -51,7 +50,7 @@ async def robot_exception_handler(
                 },
                 {"role": "assistant", "content": [{"text": "okay"}]},
             ],
-            tools=[available_modules, ui_exception_handler, route_to_human],
+            # tools=[available_modules, ui_exception_handler, route_to_human],
         )
 
         # Process the error through the agent
