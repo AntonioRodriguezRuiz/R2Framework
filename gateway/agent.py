@@ -6,14 +6,12 @@ external RPA systems, standardizes them, and intelligently routes them to approp
 recovery modules for resolution.
 """
 
-from functools import partial
 from typing import Any, Dict
 
 from fastapi import WebSocket
 from strands import Agent, ToolContext, tool
 from strands.models.openai import OpenAIModel
 
-from agent_tools.database import available_modules
 from gateway.models import RobotExceptionRequest
 from gateway.prompts import (
     GATEWAY_ORCHESTRATOR_PROMPT,
@@ -75,6 +73,6 @@ async def robot_exception_handler(
     description="Route the error to a human operator for manual intervention.",
     context=True,
 )
-async def route_to_human(error_data: str, tool_context: ToolContext) -> Dict[str, Any]:
+async def route_to_human(error_data: str, tool_context: ToolContext) -> Dict[str, Any]:  # type: ignore
     # TODO: When cockpit
     pass

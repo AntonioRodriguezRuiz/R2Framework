@@ -8,8 +8,6 @@ from sqlmodel import Session, select
 from strands.telemetry import StrandsTelemetry
 
 import database.general as database
-from gateway.agent import robot_exception_handler
-from gateway.models import RobotExceptionRequest
 
 
 @asynccontextmanager

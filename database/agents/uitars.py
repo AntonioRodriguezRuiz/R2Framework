@@ -5,6 +5,7 @@ import math
 # Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
 # SPDX-License-Identifier: Apache-2.0
 import re
+from typing import List
 
 from strands import Agent, ToolContext, tool
 from strands.models.openai import OpenAIModel
@@ -94,17 +95,17 @@ def escape_single_quotes(text):
     return re.sub(pattern, r"\\'", text)
 
 
-def round_by_factor(number: int, factor: int) -> int:
+def round_by_factor(number: float, factor: int) -> int:
     """Returns the closest integer to 'number' that is divisible by 'factor'."""
     return round(number / factor) * factor
 
 
-def ceil_by_factor(number: int, factor: int) -> int:
+def ceil_by_factor(number: float, factor: int) -> int:
     """Returns the smallest integer greater than or equal to 'number' that is divisible by 'factor'."""
     return math.ceil(number / factor) * factor
 
 
-def floor_by_factor(number: int, factor: int) -> int:
+def floor_by_factor(number: float, factor: int) -> int:
     """Returns the largest integer less than or equal to 'number' that is divisible by 'factor'."""
     return math.floor(number / factor) * factor
 
@@ -197,16 +198,12 @@ def parse_action_to_structure_output(
     # 正则表达式匹配 Action 字符串
     if text.startswith("Thought:"):
         thought_pattern = r"Thought: (.+?)(?=\s*Action: |$)"
-        thought_hint = "Thought: "
     elif text.startswith("Reflection:"):
         thought_pattern = r"Reflection: (.+?)Action_Summary: (.+?)(?=\s*Action: |$)"
-        thought_hint = "Reflection: "
     elif text.startswith("Action_Summary:"):
         thought_pattern = r"Action_Summary: (.+?)(?=\s*Action: |$)"
-        thought_hint = "Action_Summary: "
     else:
         thought_pattern = r"Thought: (.+?)(?=\s*Action: |$)"
-        thought_hint = "Thought: "
     reflection, thought = None, None
     thought_match = re.search(thought_pattern, text, re.DOTALL)
     if thought_match:
@@ -249,7 +246,7 @@ def parse_action_to_structure_output(
     ]
     actions = []
     for action_instance, raw_str in zip(parsed_actions, all_action):
-        if action_instance == None:
+        if not action_instance:
             print(f"Action can't parse: {raw_str}")
             raise ValueError(f"Action can't parse: {raw_str}")
         action_type = action_instance["function"]
@@ -276,9 +273,9 @@ def parse_action_to_structure_output(
                     for num_idx, num in enumerate(numbers):
                         num = float(num)
                         if (num_idx + 1) % 2 == 0:
-                            float_numbers.append(float(num / smart_resize_height))
+                            float_numbers.append(float(num / smart_resize_height))  # pyright:ignore[reportPossiblyUnboundVariable]
                         else:
-                            float_numbers.append(float(num / smart_resize_width))
+                            float_numbers.append(float(num / smart_resize_width))  # pyright:ignore[reportPossiblyUnboundVariable]
                 else:
                     float_numbers = [float(num) / factor for num in numbers]
 
@@ -323,7 +320,7 @@ def parsing_response_to_pyautogui_code(
         生成的pyautogui代码字符串
     """
 
-    pyautogui_code = f"import pyautogui\nimport time\n"
+    pyautogui_code = "import pyautogui\nimport time\n"
     if isinstance(responses, dict):
         responses = [responses]
     for response_id, response in enumerate(responses):
@@ -342,7 +339,7 @@ def parsing_response_to_pyautogui_code(
                 f"'''\nObservation:\n{observation}\n\nThought:\n{thought}\n'''\n"
             )
         else:
-            pyautogui_code += f"\ntime.sleep(1)\n"
+            pyautogui_code += "\ntime.sleep(1)\n"
 
         action_dict = response
         action_type = action_dict.get("action_type")
@@ -440,19 +437,19 @@ def parsing_response_to_pyautogui_code(
                 stripped_content = stripped_content.rstrip("\\n").rstrip("\n")
             if content:
                 if input_swap:
-                    pyautogui_code += f"\nimport pyperclip"
+                    pyautogui_code += "\nimport pyperclip"
                     pyautogui_code += f"\npyperclip.copy('{stripped_content}')"
-                    pyautogui_code += f"\npyautogui.hotkey('ctrl', 'v')"
-                    pyautogui_code += f"\ntime.sleep(0.5)\n"
+                    pyautogui_code += "\npyautogui.hotkey('ctrl', 'v')"
+                    pyautogui_code += "\ntime.sleep(0.5)\n"
                     if content.endswith("\n") or content.endswith("\\n"):
-                        pyautogui_code += f"\npyautogui.press('enter')"
+                        pyautogui_code += "\npyautogui.press('enter')"
                 else:
                     pyautogui_code += (
                         f"\npyautogui.write('{stripped_content}', interval=0.1)"
                     )
-                    pyautogui_code += f"\ntime.sleep(0.5)\n"
+                    pyautogui_code += "\ntime.sleep(0.5)\n"
                     if content.endswith("\n") or content.endswith("\\n"):
-                        pyautogui_code += f"\npyautogui.press('enter')"
+                        pyautogui_code += "\npyautogui.press('enter')"
 
         elif action_type in ["drag", "select"]:
             # Parsing drag or select action based on start and end_boxes
@@ -485,11 +482,11 @@ def parsing_response_to_pyautogui_code(
                 y = None
             direction = action_inputs.get("direction", "")
 
-            if x == None:
+            if not x:
                 if "up" in direction.lower():
-                    pyautogui_code += f"\npyautogui.scroll(5)"
+                    pyautogui_code += "\npyautogui.scroll(5)"
                 elif "down" in direction.lower():
-                    pyautogui_code += f"\npyautogui.scroll(-5)"
+                    pyautogui_code += "\npyautogui.scroll(-5)"
             else:
                 if "up" in direction.lower():
                     pyautogui_code += f"\npyautogui.scroll(5, x={x}, y={y})"
@@ -508,12 +505,23 @@ def parsing_response_to_pyautogui_code(
             start_box = str(start_box)
             if start_box:
                 start_box = eval(start_box)
+                if not isinstance(start_box, List):
+                    raise ValueError("start_box is not list of int")
                 if len(start_box) == 4:
                     x1, y1, x2, y2 = start_box  # Assuming box is in [x1, y1, x2, y2]
                 elif len(start_box) == 2:
                     x1, y1 = start_box
                     x2 = x1
                     y2 = y1
+                else:
+                    raise ValueError("start_box length is not 2 or 4")
+                if not (
+                    isinstance(x1, (int, float))
+                    and isinstance(y1, (int, float))
+                    and isinstance(x2, (int, float))
+                    and isinstance(y2, (int, float))
+                ):
+                    raise ValueError("start_box coordinates are not numbers")
                 x = round(float((x1 + x2) / 2) * image_width, 3)
                 y = round(float((y1 + y2) / 2) * image_height, 3)
                 if action_type == "left_single" or action_type == "click":
@@ -528,7 +536,7 @@ def parsing_response_to_pyautogui_code(
                     pyautogui_code += f"\npyautogui.moveTo({x}, {y})"
 
         elif action_type in ["finished"]:
-            pyautogui_code = f"DONE"
+            pyautogui_code = "DONE"
 
         else:
             pyautogui_code += f"\n# Unrecognized action type: {action_type}"
@@ -635,7 +643,7 @@ Variables: {variables}
         model_id=PROVIDER_GROUNDING_MODEL,
     )
 
-    agent = Agent(model=model, messages=messages)
+    agent = Agent(model=model, messages=messages)  # type: ignore
     try:
         response = await agent.invoke_async(
             ""
@@ -688,7 +696,7 @@ Variables: {variables}
                 ]
 
                 response = await agent.invoke_async(
-                    new_messages
+                    new_messages  # type: ignore
                 )  # Empty input since all context is in messages
             except Exception as _:
                 response = agent("The action failed. Try again")

@@ -30,8 +30,10 @@ class Router(SQLModel, table=True):
         description="The type of input the agent can process.",
     )
 
-    agents: list["Agent"] = Relationship(
-        back_populates="router",
+    agents: list["Agent"] = (  # noqa: F821 # pyright: ignore[reportUndefinedVariable]
+        Relationship(
+            back_populates="router",
+        )
     )
 
     created_at: datetime = Field(

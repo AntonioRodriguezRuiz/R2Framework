@@ -119,12 +119,12 @@ async def compare_images(
         # )
 
         # Compute SSIM between two images
-        ssim_index, _ = ssim(
+        ssim_index = ssim(
             before_image_cv2,
             after_image_cv2,
-            full=True,
+            full=False,
             multichannel=True,
-        )
+        )[0]
 
         return (ssim_index < IMAGE_SIMILARITY_THRESHOLD) == expected_change
 

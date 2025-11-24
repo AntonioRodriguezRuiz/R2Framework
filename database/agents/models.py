@@ -308,7 +308,7 @@ class Agent(SQLModel, table=True):
             raise ValueError(
                 f"The class '{self.response_model}' is not a valid Pydantic model."
             )
-        return model_class
+        return model_class  # type: ignore It returns type[BaseModel] but cannot be expressed in type hints without __future__ annotations, which mess up SQLModel
 
     async def __call__(
         self, invocation_state: dict[str, Any] = {}, *args, **kwargs
@@ -336,7 +336,9 @@ class Agent(SQLModel, table=True):
                         "image": {
                             "format": "jpeg",
                             "source": {
-                                "bytes": await screenshot_bytes(websocket),
+                                "bytes": await screenshot_bytes(
+                                    invocation_state["websocket"]
+                                ),
                             },
                         },
                     },
@@ -363,7 +365,7 @@ class Agent(SQLModel, table=True):
         strands_agent = StrandsAgent(
             model=model,
             tools=tools + sub_agent_tools,
-            messages=messages,
+            messages=messages,  # type: ignore This works fine
         )
 
         try:
@@ -378,7 +380,7 @@ class Agent(SQLModel, table=True):
 
             response = await strands_agent.invoke_async(
                 "Given our conversation so far, please provide a structured recovery report.",
-                structured_output_model=self.get_pydantic_response_model(),
+                structured_output_model=self.get_pydantic_response_model(),  # type: ignore It returns type[BaseModel] but cannot be expressed in type hints without __future__ annotations, which mess up SQLModel
             )
 
             return [{"text": str(response)}]
