@@ -90,7 +90,7 @@ async def test_request_remote_screenshot_success():
     )
     msg_type, payload = ws.sent_messages[0]
     assert msg_type == "json"
-    assert payload.get("type") == "request_screenshot"
+    assert payload.get("type") == "screenshot"
 
 
 @pytest.mark.asyncio

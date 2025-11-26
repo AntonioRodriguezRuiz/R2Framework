@@ -158,7 +158,7 @@ async def request_remote_screenshot(
         RuntimeError: For unexpected message formats or disconnections.
     """
 
-    await websocket.send_json({"type": "request_screenshot", "content": ""})
+    await websocket.send_json({"type": "screenshot", "content": ""})
 
     try:
         data = await asyncio.wait_for(websocket.receive_bytes(), timeout=timeout)
