@@ -41,7 +41,6 @@ def _create_router(
     """
     Create and persist a Router record.
     """
-    print(api_key)
     router = Router(
         api_key=api_key,
         model_name=model_name,
