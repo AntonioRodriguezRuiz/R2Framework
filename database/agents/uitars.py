@@ -1,3 +1,47 @@
+"""UITARS Action Specification
+This module provides grounding and execution for UI automation actions predicted by a vision-language grounding model (UITARS).
+The model outputs a textual reasoning block followed by one or more structured Action definitions that are parsed into a normalized
+internal structure, then translated into executable PyAutoGUI code.
+
+1. Supported Action Types (action_type)
+   hotkey        : Combination keystrokes (e.g., "ctrl v", "ctrl shift s")
+   press/keydown : Key held down (uses keyDown)
+   release/keyup : Key released (uses keyUp)
+   type          : Text input (clipboard paste optimization or direct write)
+   click         : Generic left click (alias of left_single)
+   left_single   : Left button single click
+   left_double   : Left button double click
+   right_single  : Right button single click
+   hover         : Move mouse without clicking
+   drag          : Drag from start_box to end_box
+   select        : Alias of drag (semantically a selection gesture)
+   scroll        : Scroll wheel at (optional) coordinates
+   finished      : Sentinel indicating completion (translated to DONE)
+
+2. Structured Format
+Each grounded action becomes:
+{
+  "reflection": Optional[str],        # High-level self-critique if provided
+  "thought": Optional[str],           # Immediate reasoning for the action
+  "action_type": str,                 # One of the supported types above
+  "action_inputs": {                  # Parameters dependent on action_type
+       "start_box": [x1, y1, x2, y2] or [x, y] (stringified list of floats normalized 0-1)
+       "end_box":   [x1, y1, x2, y2] (for drag/select)
+       "content":   "text to type" (for type)
+       "hotkey":    "ctrl v" or "ctrl shift s" (space separated keys)
+       "key"/"press": "enter" | "tab" | "arrowdown" | etc.
+       "direction": "up" | "down" (for scroll)
+  },
+  "text": str                         # Original raw model response segment
+}
+
+Normalization:
+- Bounding boxes are converted to relative coordinates (floats in [0,1]) derived from raw model output.
+- If the model returns a single point, it is expanded to a 2-point box [x, y, x, y] for consistency.
+- Keys like arrowleft/arrowright/arrowup/arrowdown are canonicalized to left/right/up/down.
+- Space key may appear as "space" and is converted to " " for PyAutoGUI.
+"""
+
 # Yes we need this shit until polymorphism is allowed in SQLModel
 import ast
 import math
@@ -174,7 +218,23 @@ def parse_action_to_structure_output(
     model_type="qwen25vl",
     max_pixels=16384 * 28 * 28,
     min_pixels=100 * 28 * 28,
-):
+) -> List[dict]:
+    """
+    将M模型的输出解析为结构化的action列表
+    参数:
+        text: 模型输出的字符串
+        origin_resized_height: 原始图像的高度
+        origin_resized_width: 原始图像的宽度
+        factor: 缩放因子
+        model_type: 模型类型，决定坐标处理方式
+    返回:
+        结构化的action列表，每个action是一个字典，包含以下字段:
+        - reflection: 反思内容（如果有）
+        - thought: 思考内容
+        - action_type: 动作类型
+        - action_inputs: 动作输入参数
+        - text: 原始文本
+    """
     text = text.strip()
 
     if "<point>" in text:
@@ -251,6 +311,11 @@ def parse_action_to_structure_output(
             raise ValueError(f"Action can't parse: {raw_str}")
         action_type = action_instance["function"]
         params = action_instance["args"]
+        # Normalization
+        if action_type == "press":
+            action_type = "keydown"
+        elif action_type == "release":
+            action_type = "keyup"
 
         # import pdb; pdb.set_trace()
         action_inputs = {}
@@ -259,7 +324,19 @@ def parse_action_to_structure_output(
                 continue
             param = param.lstrip()  # 去掉引号和多余的空格
             # 处理start_box或者end_box参数格式 '<bbox>x1 y1 x2 y2</bbox>'
-            action_inputs[param_name.strip()] = param
+            if "press" in param_name or "key" in param_name:
+                match param:
+                    case "arrowleft":
+                        param = "left"
+                    case "arrowright":
+                        param = "right"
+                    case "arrowup":
+                        param = "up"
+                    case "arrowdown":
+                        param = "down"
+                    case "space":
+                        param = " "
+                action_inputs["key"] = param  # Normalization
 
             if "start_box" in param_name or "end_box" in param_name:
                 ori_box = param
@@ -286,7 +363,10 @@ def parse_action_to_structure_output(
                         float_numbers[0],
                         float_numbers[1],
                     ]
-                action_inputs[param_name.strip()] = str(float_numbers)
+                action_inputs[param_name.strip()] = float_numbers
+
+            else:
+                action_inputs[param_name.strip()] = param
 
         # import pdb; pdb.set_trace()
         actions.append(
@@ -676,7 +756,15 @@ Variables: {variables}
                 if code == "DONE":
                     break
 
-                await websocket.send_json({"type": "code", "content": code})
+                await websocket.send_json(
+                    {"type": "action", "content": action}
+                )  # Action will be parsed and executed by the client
+                # Wait for action result
+                result = await websocket.receive_json()
+                if not result.get("success"):
+                    raise RuntimeError(
+                        f"Action execution failed on client side. With action: {action}"
+                    )
 
                 new_messages = [
                     {
@@ -697,7 +785,9 @@ Variables: {variables}
 
                 response = await agent.invoke_async(
                     new_messages  # type: ignore
-                )  # Empty input since all context is in messages
+                )
+            except RuntimeError as re:
+                raise re
             except Exception as _:
                 response = agent("The action failed. Try again")
                 continue
