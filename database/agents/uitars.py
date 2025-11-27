@@ -324,6 +324,8 @@ def parse_action_to_structure_output(
                 continue
             param = param.lstrip()  # 去掉引号和多余的空格
             # 处理start_box或者end_box参数格式 '<bbox>x1 y1 x2 y2</bbox>'
+            if action_type == "hotkey" and "key" in param_name:
+                param_name = "hotkey"
             if "press" in param_name or "key" in param_name:
                 match param:
                     case "arrowleft":
