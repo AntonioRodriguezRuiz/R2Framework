@@ -378,10 +378,12 @@ class Agent(SQLModel, table=True):
                 invocation_state=invocation_state,
             )
 
-            response = await strands_agent.invoke_async(
-                "Given our conversation so far, please provide a structured recovery report.",
-                structured_output_model=self.get_pydantic_response_model(),  # type: ignore It returns type[BaseModel] but cannot be expressed in type hints without __future__ annotations, which mess up SQLModel
-            )
+            response = (
+                await strands_agent.invoke_async(
+                    "Given our conversation so far, please provide a structured recovery report.",
+                    structured_output_model=self.get_pydantic_response_model(),  # type: ignore It returns type[BaseModel] but cannot be expressed in type hints without __future__ annotations, which mess up SQLModel
+                )
+            ).structured_output
 
             return [{"text": response.__str__()}]
         except Exception as e:
