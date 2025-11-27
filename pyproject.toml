@@ -5,11 +5,11 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "fastapi[standard]>=0.115.13",
+    "fastapi[standard]>=0.122.0",
     "psycopg2>=2.9.10",
     "sqlmodel>=0.0.24",
-    "strands-agents[openai,otel]>=0.1.9",
-    "strands-agents-tools>=0.1.7",
+    "strands-agents[openai,otel]>=1.18.0",
+    "strands-agents-tools>=0.2.16",
     "pillow>=11.2.1",
     "pyautogui>=0.9.54",
     "numpy>=2.2.6",

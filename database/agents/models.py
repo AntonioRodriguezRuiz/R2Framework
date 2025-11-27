@@ -373,7 +373,7 @@ class Agent(SQLModel, table=True):
                 [f"{arg.name}: {kwargs.get(arg.name)}" for arg in self.arguments]
             )
 
-            await strands_agent.invoke_async(
+            _ = await strands_agent.invoke_async(
                 instruction,
                 invocation_state=invocation_state,
             )
@@ -383,7 +383,7 @@ class Agent(SQLModel, table=True):
                 structured_output_model=self.get_pydantic_response_model(),  # type: ignore It returns type[BaseModel] but cannot be expressed in type hints without __future__ annotations, which mess up SQLModel
             )
 
-            return [{"text": str(response)}]
+            return [{"text": response.__str__()}]
         except Exception as e:
             return [{"text": str(e)}]
 
