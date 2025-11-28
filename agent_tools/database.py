@@ -1,39 +1,4 @@
-from sqlmodel import Session, select
 from strands import tool
-
-from gateway.models import Module
-
-
-@tool(name="available_modules", description="List all available modules in the system.")
-def available_modules() -> list:
-    """
-    List all available modules in the system.
-
-    Args:
-        (no inputs required) - tool input can be empty
-
-    Returns:
-        Dictionary containing status and tool response:
-        {
-            "toolUseId": "unique_id",
-            "status": "success|error",
-            "content": [{"json": [<module objects>]}]
-        }
-
-        Success: Returns a JSON list of available modules under content[0]["json"].
-        Error: Returns information about what went wrong.
-    """
-    from database.general import general_engine
-
-    try:
-        with Session(general_engine) as session:
-            modules = session.exec(select(Module)).unique()
-            modules_json = [module.to_json() for module in modules]
-
-        # Return only the 'content' value as requested by the new contract
-        return [{"json": modules_json}]
-    except Exception as e:
-        return [{"text": str(e)}]
 
 
 @tool(

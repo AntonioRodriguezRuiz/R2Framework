@@ -22,7 +22,6 @@ from strands.tools.decorator import DecoratedFunctionTool
 
 # Agent tools (generic utilities)
 from agent_tools.database import (
-    available_modules,
     register_plan,
     register_solution,
 )
@@ -47,7 +46,6 @@ def _gather_tool_functions() -> list[DecoratedFunctionTool]:
         # Gateway-related
         route_to_human,
         # General agent tools
-        available_modules,  # Not used
         register_solution,  # Not used
         register_plan,  # Not used
         image_to_base64,

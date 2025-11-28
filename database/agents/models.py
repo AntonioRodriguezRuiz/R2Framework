@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from importlib import import_module
 from typing import Any, Optional
 
-from fastapi import WebSocket
+from fastapi import WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from sqlalchemy import Column
 from sqlmodel import Enum, Field, Relationship, SQLModel
@@ -386,6 +386,8 @@ class Agent(SQLModel, table=True):
             ).structured_output
 
             return [{"text": response.__str__()}]
+        except WebSocketDisconnect as _:
+            raise
         except Exception as e:
             return [{"text": str(e)}]
 

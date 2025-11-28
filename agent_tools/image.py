@@ -4,7 +4,7 @@ from io import BytesIO
 
 import cv2
 import numpy as np
-from fastapi import WebSocket
+from fastapi import WebSocket, WebSocketDisconnect
 from PIL import Image
 from skimage.metrics import structural_similarity as ssim
 from strands import ToolContext, tool
@@ -89,6 +89,8 @@ async def take_screenshot(tool_context: ToolContext) -> list:
                 }
             }
         ]
+    except WebSocketDisconnect as _:
+        raise
     except Exception as e:
         raise Exception(f"Error taking screenshot: {str(e)}")
 
@@ -128,6 +130,8 @@ async def compare_images(
 
         return (ssim_index < IMAGE_SIMILARITY_THRESHOLD) == expected_change
 
+    except WebSocketDisconnect as _:
+        raise
     except Exception as _:
         raise ValueError(
             "Error comparing images. Use the take_screenshot() tool and judge the outcome yourself"
@@ -163,6 +167,8 @@ async def request_remote_screenshot(
     try:
         data = await asyncio.wait_for(websocket.receive_bytes(), timeout=timeout)
         return data
+    except WebSocketDisconnect as _:
+        raise
     except TimeoutError:
         raise TimeoutError("Timed out waiting for screenshot from client")
     except Exception as e:

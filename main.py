@@ -3,7 +3,7 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from sqlmodel import Session, select
 from strands.telemetry import StrandsTelemetry
 
@@ -59,19 +59,27 @@ async def handle_robot_exception(websocket: WebSocket):
                 database.Agent.type == database.AgentType.GatewayAgent
             )
         ).first()
-        if not agent:
-            await websocket.send_json(
-                {
-                    "type": "done",
-                    "content": "No GatewayAgent found in the database.",
-                }
-            )
-            await websocket.close()
-            return
 
-        invocation_state = {"websocket": websocket}
+    if not agent:
+        await websocket.send_json(
+            {
+                "type": "done",
+                "content": "No GatewayAgent found in the database.",
+            }
+        )
+        await websocket.close()
+        return
+
+    invocation_state = {"websocket": websocket}
+    try:
         response = await agent(invocation_state=invocation_state, **data)
+        await websocket.send_json({"type": "done", "content": response})
+        await websocket.close()
+    except WebSocketDisconnect as _:
+        logging.info("WebSocket disconnected before completion.")
+    except Exception as e:
+        logging.error(f"Error handling robot exception: {e}")
+        await websocket.send_json({"type": "error", "content": str(e)})
+        await websocket.close()
 
-    await websocket.send_json({"type": "done", "content": response})
-    await websocket.close()
     return

@@ -51,6 +51,7 @@ import math
 import re
 from typing import List
 
+from fastapi import WebSocketDisconnect
 from strands import Agent, ToolContext, tool
 from strands.models.openai import OpenAIModel
 
@@ -788,8 +789,10 @@ Variables: {variables}
                 response = await agent.invoke_async(
                     new_messages  # type: ignore
                 )
-            except RuntimeError as re:
-                raise re
+            except WebSocketDisconnect as _:
+                raise
+            except RuntimeError as _:
+                raise
             except Exception as _:
                 response = agent("The action failed. Try again")
                 continue
@@ -802,5 +805,9 @@ Variables: {variables}
         )
         return conversation_history
 
+    except WebSocketDisconnect as _:
+        raise
+    except RuntimeError as _:
+        raise
     except Exception as e:
         return [{"text": str(e)}]
