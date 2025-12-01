@@ -88,7 +88,6 @@ def populate_routers(engine) -> None:
     skipped = 0
     with Session(engine) as session:
         for model_name, (api_key, endpoint) in desired.items():
-            print(api_key)
             if _existing_router(session, model_name, endpoint):
                 skipped += 1
                 continue

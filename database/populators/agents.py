@@ -21,7 +21,7 @@ Notes:
 
 from __future__ import annotations
 
-from typing import List
+from typing import List, Optional
 
 from sqlmodel import Session, select
 
@@ -100,7 +100,9 @@ def _argument(
     )
 
 
-def _attach_tools(session: Session, agent: Agent, tool_names: List[str]) -> None:
+def _attach_tools(
+    session: Session, agent: Agent, tool_names: List[str], limit: Optional[int]
+) -> None:
     """
     Attach tools (by name) to an Agent via AgentTool association.
     Skips missing tools but logs a warning.
@@ -123,7 +125,7 @@ def _attach_tools(session: Session, agent: Agent, tool_names: List[str]) -> None
                 agent_id=agent.id,
                 tool=tool,
                 tool_id=tool.id,
-                limit=5,
+                limit=limit,
                 required=False,
             )
         )
@@ -164,7 +166,9 @@ def _create_agent(
     return agent
 
 
-def _create_sub_agent(session: Session, parent: Agent, child: Agent) -> None:
+def _create_sub_agent(
+    session: Session, parent: Agent, child: Agent, limit: Optional[int]
+) -> None:
     """Create a SubAgent relationship if not present."""
     existing = session.exec(
         select(SubAgent).where(
@@ -179,6 +183,7 @@ def _create_sub_agent(session: Session, parent: Agent, child: Agent) -> None:
             parent_agent=parent,
             child_agent_id=child.id,
             child_agent=child,
+            limit=limit,
         )
     )
 
@@ -242,6 +247,7 @@ def populate_agents(engine) -> None:
             [
                 "route_to_human",
             ],
+            None,
         )
 
         # UI Exception Handler (Top-level)
@@ -298,11 +304,7 @@ def populate_agents(engine) -> None:
             input_type=Agent.InputType.TEXT,
         )
 
-        _attach_tools(
-            session,
-            ui_exception_handler_agent,
-            [],
-        )
+        _attach_tools(session, ui_exception_handler_agent, [], None)
 
         # Direct Recovery Agent
         direct_recovery_args = [
@@ -329,6 +331,7 @@ def populate_agents(engine) -> None:
             [
                 "take_screenshot",
             ],
+            None,
         )
 
         # Recovery Plan Generator
@@ -353,7 +356,7 @@ def populate_agents(engine) -> None:
             input_type=Agent.InputType.IMAGETEXT,
             enabled=False,
         )
-        _attach_tools(session, plan_generator_agent, ["take_screenshot"])
+        _attach_tools(session, plan_generator_agent, ["take_screenshot"], None)
 
         # Step Execution Agent
         step_execution_args = [
@@ -377,7 +380,7 @@ def populate_agents(engine) -> None:
             input_type=Agent.InputType.IMAGETEXT,
             enabled=False,
         )
-        _attach_tools(session, step_execution_agent, ["take_screenshot"])
+        _attach_tools(session, step_execution_agent, ["take_screenshot"], None)
 
         # UITARS Agent
         uitars_args = [
@@ -402,7 +405,7 @@ def populate_agents(engine) -> None:
             agent_type=AgentType.GuiAgent,
             input_type=Agent.InputType.IMAGETEXT,
         )
-        _attach_tools(session, uitars_agent, ["take_screenshot"])
+        _attach_tools(session, uitars_agent, ["take_screenshot"], None)
 
         # Standalone UITARS Agent
         standalone_uitars_args = [
@@ -426,16 +429,18 @@ def populate_agents(engine) -> None:
             agent_type=AgentType.GuiAgent,
             input_type=Agent.InputType.IMAGETEXT,
         )
-        _attach_tools(session, standalone_uitars_agent, [])
+        _attach_tools(session, standalone_uitars_agent, [], None)
 
-        _create_sub_agent(session, gateway_agent, ui_exception_handler_agent)
+        _create_sub_agent(session, gateway_agent, ui_exception_handler_agent, 1)
         # Build sub-agent hierarchy under UI Exception Handler
-        _create_sub_agent(session, ui_exception_handler_agent, direct_recovery_agent)
-        _create_sub_agent(session, ui_exception_handler_agent, plan_generator_agent)
-        _create_sub_agent(session, ui_exception_handler_agent, step_execution_agent)
-        _create_sub_agent(session, direct_recovery_agent, uitars_agent)
-        _create_sub_agent(session, step_execution_agent, uitars_agent)
-        _create_sub_agent(session, ui_exception_handler_agent, standalone_uitars_agent)
+        _create_sub_agent(session, ui_exception_handler_agent, direct_recovery_agent, 1)
+        _create_sub_agent(session, ui_exception_handler_agent, plan_generator_agent, 1)
+        _create_sub_agent(session, ui_exception_handler_agent, step_execution_agent, 1)
+        _create_sub_agent(session, direct_recovery_agent, uitars_agent, 1)
+        _create_sub_agent(session, step_execution_agent, uitars_agent, 1)
+        _create_sub_agent(
+            session, ui_exception_handler_agent, standalone_uitars_agent, 1
+        )
 
         session.commit()
         print("[populate_agents] Agent population complete.")

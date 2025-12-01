@@ -13,6 +13,7 @@ from strands import ToolContext, tool
 from strands.tools.decorator import DecoratedFunctionTool
 from typing_extensions import Dict
 
+from agent_tools.hooks import LimitToolCounts
 from agent_tools.image import screenshot_bytes
 
 from ..provider.models import Router
@@ -196,6 +197,17 @@ class Agent(SQLModel, table=True):
         """Return the list of sub-agents associated with the agent."""
         return [sa.child_agent for sa in self.sub_agents if sa.child_agent.enabled]
 
+    def get_tool_limiter(self) -> LimitToolCounts:
+        """Return a tool limiter hook provider based on the agent's tool limits."""
+        tool_limits = {}
+        for at in self.tools:
+            if at.limit is not None:
+                tool_limits[at.tool.name] = at.limit
+        for sa in self.sub_agents:
+            if sa.limit is not None:
+                tool_limits[sa.child_agent.get_tool_name()] = sa.limit
+        return LimitToolCounts(tool_limits)
+
     def as_tool(self) -> DecoratedFunctionTool:
         """Dynamically creates the agent tool function for usage within other agents."""
 
@@ -365,6 +377,7 @@ class Agent(SQLModel, table=True):
         strands_agent = StrandsAgent(
             model=model,
             tools=tools + sub_agent_tools,
+            hooks=[self.get_tool_limiter()],
             messages=messages,  # type: ignore This works fine
         )
 
@@ -441,6 +454,11 @@ class SubAgent(SQLModel, table=True):
             "lazy": "joined",
             "foreign_keys": "SubAgent.child_agent_id",
         },
+    )
+
+    limit: Optional[int] = Field(
+        None,
+        description="Optional limit on the number of times the sub-agent can be called by the parent agent.",
     )
 
     created_at: datetime = Field(
