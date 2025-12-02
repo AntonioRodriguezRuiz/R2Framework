@@ -1,7 +1,9 @@
 from threading import Lock
 from typing import override
 
+from pydantic import ValidationError
 from strands.hooks import (
+    AfterToolCallEvent,
     BeforeInvocationEvent,
     BeforeToolCallEvent,
     HookProvider,
@@ -29,6 +31,7 @@ class LimitToolCounts(HookProvider):
     def register_hooks(self, registry: HookRegistry, **kwargs) -> None:
         registry.add_callback(BeforeInvocationEvent, self.reset_counts)
         registry.add_callback(BeforeToolCallEvent, self.intercept_tool)
+        registry.add_callback(AfterToolCallEvent, self.intercept_response)
 
     def reset_counts(self, event: BeforeInvocationEvent) -> None:
         with self._lock:
@@ -46,3 +49,15 @@ class LimitToolCounts(HookProvider):
                 f"Tool '{tool_name}' has been invoked too many and is now being throttled. "
                 f"DO NOT CALL THIS TOOL ANYMORE "
             )
+
+    def intercept_response(self, event: AfterToolCallEvent):
+        # Remove one call if validation exception happened
+        tool_name = event.tool_use["name"]
+        if (
+            event.exception
+            and isinstance(event.exception, ValidationError)
+            or isinstance(event.exception, TypeError)
+        ):
+            with self._lock:
+                tool_count = self.tool_counts.get(tool_name, 0) - 1
+                self.tool_counts[tool_name] = max(0, tool_count)
