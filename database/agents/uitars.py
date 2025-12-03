@@ -44,6 +44,7 @@ Normalization:
 
 # Yes we need this shit until polymorphism is allowed in SQLModel
 import ast
+import asyncio
 import math
 
 # Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
@@ -700,6 +701,7 @@ Variables: {variables}
         "WebSocket must be provided in tool context"
     )
     websocket = tool_context.invocation_state["websocket"]
+    image = await screenshot_bytes(websocket)
 
     messages = [
         {
@@ -714,7 +716,7 @@ Variables: {variables}
                     "type": "image",
                     "image": {
                         "format": "jpeg",
-                        "source": {"bytes": await screenshot_bytes(websocket)},
+                        "source": {"bytes": image},
                     },
                 },
             ],
@@ -764,6 +766,9 @@ Variables: {variables}
                 )  # Action will be parsed and executed by the client
                 # Wait for action result
                 result = await websocket.receive_json()
+                # Artificial delay to allow UI to update
+                await asyncio.sleep(0.5)
+                image = await screenshot_bytes(websocket)
                 if not result.get("success"):
                     raise RuntimeError(
                         f"Action execution failed on client side. With action: {action}"
@@ -777,9 +782,7 @@ Variables: {variables}
                                 "type": "image",
                                 "image": {
                                     "format": "jpeg",
-                                    "source": {
-                                        "bytes": await screenshot_bytes(websocket)
-                                    },
+                                    "source": {"bytes": image},
                                 },
                             },
                         ],
