@@ -221,7 +221,9 @@ class Agent(SQLModel, table=True):
             inputSchema=self.get_input_schema(),
             context=True,
         )
-        async def agent_tool_function(tool_context: ToolContext) -> list:
+        async def agent_tool_function(
+            tool_context: ToolContext,
+        ) -> str | Dict[str, Any]:
             if "websocket" not in tool_context.invocation_state:
                 raise ValueError(
                     "WebSocket must be provided in tool context invocation state."
@@ -324,7 +326,7 @@ class Agent(SQLModel, table=True):
 
     async def __call__(
         self, invocation_state: dict[str, Any] = {}, *args, **kwargs
-    ) -> list:
+    ) -> str | Dict[str, Any]:
         """
         Dinamically computes tools, subagents, output model and input validation. Calls the agent and returns the final structered response.
         """
@@ -391,18 +393,18 @@ class Agent(SQLModel, table=True):
                 invocation_state=invocation_state,
             )
 
-            response = (
+            response: BaseModel = (
                 await strands_agent.invoke_async(
-                    "Given our conversation so far, please provide a structured recovery report.",
+                    "Given our conversation so far, please provide a report using structured output with the given tool.",
                     structured_output_model=self.get_pydantic_response_model(),  # type: ignore It returns type[BaseModel] but cannot be expressed in type hints without __future__ annotations, which mess up SQLModel
                 )
             ).structured_output
 
-            return [{"text": response.__str__()}]
+            return response.model_dump()
         except WebSocketDisconnect as _:
             raise
-        except Exception as e:
-            return [{"text": str(e)}]
+        except Exception as _:
+            raise
 
     def __init__(self, **data: Any) -> None:
         super().__init__(**data)
