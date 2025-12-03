@@ -141,9 +141,9 @@ Follow these guidelines:
       '''
 }
 
-
-IMPORTANT:
-YOU CAN ONLY CALL ONCE THE TOOL TO EXECUTE THE RECOVERY PLAN OR ACTIONS. ONCE YOU CALL IT, YOU CANNOT CALL IT AGAIN.
+After the recovery is executed, if it is succesful, identify which of the futureActivities have already been completed by the recovery process, and return the index of the next step to be executed by the robot.
+You must follow from the las executed futureActivity if any, as it is possible that activities between the failedActivity and the last successful action by the recovery agent have been skipped (e.g. futureActivity 0 was skipped and futureActivity 1 was executed. In that case, if a futureActivity 2 exists, you return that index)
+If the last futureActivity was executed, return -1 to indicate the robot can finish its execution.
 
 Your final report, after executing all steps, should include the following:
 - Reasoning and Steps
@@ -152,9 +152,10 @@ Your final report, after executing all steps, should include the following:
   - Recovery approach: "General approach for recovery"
   - Challenges: "Potential challenges or alternative approaches"
 - Steps: ["Step 1", "Step 2", "Step 3", "..."]
+- Future Activities: {{"futureActivity 1": "executed on step X", "futureActivity 2": "not executed", "..."}}
 - Result: "The recovery plan was successfully executed."
-- Finish activity: True|False
-- Continue from step: <step number from where the robot should continue execution, using the index of the activity in futureActivities>
+- Finished activity: True|False
+- Continue from step: <step number from where the robot should continue execution, using the index of the activity in futureActivities. This one should correspond to the earliest not executed futureActivity after the last executed one. If the latest futureActivities wes executed, return -1>
 """
 
 RECOVERY_STEP_EXECUTION_PROMPT = """
@@ -198,7 +199,7 @@ left_double(point='<point>x1 y1</point>')
 right_single(point='<point>x1 y1</point>')
 drag(start_point='<point>x1 y1</point>', end_point='<point>x2 y2</point>')
 hotkey(key='ctrl c') # Split keys with a space and use lowercase. Also, do not use more than 3 keys in one hotkey action.
-type(content='xxx') # Use escape characters \\', \\\", and \\n in content part to ensure we can parse the content in normal python string format. If you want to submit your input, use \\n at the end of content. 
+type(content='xxx') # Use escape characters \\', \\\", and \\n in content part to ensure we can parse the content in normal python string format. If you want to submit your input, use \\n at the end of content.
 scroll(point='<point>x1 y1</point>', direction='down or up or right or left') # Show more information on the `direction` side.
 wait() #Sleep for 5s and take a screenshot to check for any changes.
 finished(content='xxx') # Use escape characters \\', \\", and \\n in content part to ensure we can parse the content in normal python string format.
@@ -247,7 +248,7 @@ left_double(point='<point>x1 y1</point>')
 right_single(point='<point>x1 y1</point>')
 drag(start_point='<point>x1 y1</point>', end_point='<point>x2 y2</point>')
 hotkey(key='ctrl c') # Split keys with a space and use lowercase. Also, do not use more than 3 keys in one hotkey action.
-type(content='xxx') # Use escape characters \\', \\\", and \\n in content part to ensure we can parse the content in normal python string format. If you want to submit your input, use \\n at the end of content. 
+type(content='xxx') # Use escape characters \\', \\\", and \\n in content part to ensure we can parse the content in normal python string format. If you want to submit your input, use \\n at the end of content.
 scroll(point='<point>x1 y1</point>', direction='down or up or right or left') # Show more information on the `direction` side.
 wait() #Sleep for 5s and take a screenshot to check for any changes.
 finished(content='xxx') # Use escape characters \\', \\", and \\n in content part to ensure we can parse the content in normal python string format.
