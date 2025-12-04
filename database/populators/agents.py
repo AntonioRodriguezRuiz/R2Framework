@@ -37,25 +37,16 @@ from database.tools.models import Tool
 
 # Prompts & response models
 from gateway.prompts import GATEWAY_ORCHESTRATOR_PROMPT
-from gateway.templates import ResponseToRPA  # noqa: F401
 from modules.uierror.prompts import (
     RECOVERY_DIRECT_PROMPT,
     RECOVERY_PLANNER_PROMPT,
     RECOVERY_STEP_EXECUTION_PROMPT,
     UI_EXCEPTION_HANDLER,
 )
-from modules.uierror.templates import (  # noqa: F401
-    RecoveryDirectReport,
-    RecoveryPlannerReport,
-    RecoveryStepExecutionResult,
-    UiExceptionReport,
-)
 
 # Settings (fallbacks if not present)
 try:
     from settings import (
-        FREE_PROVIDER_API_KEY,
-        PROVIDER_API_BASE,
         PROVIDER_GROUNDING_MODEL,
         PROVIDER_MODEL,
         PROVIDER_VISION_MODEL,
@@ -63,8 +54,6 @@ try:
     )
 except Exception:
     # Fallback defaults (non-secure placeholders)
-    FREE_PROVIDER_API_KEY = "FAKE_KEY"
-    PROVIDER_API_BASE = "https://api.fake-provider.local/v1"
     PROVIDER_MODEL = "gpt-4o-mini"
     PROVIDER_VISION_MODEL = "gpt-4o-vision-mini"
     PROVIDER_VISION_TOOL_MODEL = "gpt-4o-vision-tool"
@@ -304,7 +293,9 @@ def populate_agents(engine) -> None:
             input_type=Agent.InputType.TEXT,
         )
 
-        _attach_tools(session, ui_exception_handler_agent, [], None)
+        _attach_tools(
+            session, ui_exception_handler_agent, ["compute_continuation_activity"], None
+        )
 
         # Direct Recovery Agent
         direct_recovery_args = [

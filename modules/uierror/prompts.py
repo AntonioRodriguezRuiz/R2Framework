@@ -141,9 +141,9 @@ Follow these guidelines:
       '''
 }
 
-After the recovery is executed, if it is succesful, identify which of the futureActivities have already been completed by the recovery process, and return the index of the next step to be executed by the robot.
-You must follow from the las executed futureActivity if any, as it is possible that activities between the failedActivity and the last successful action by the recovery agent have been skipped (e.g. futureActivity 0 was skipped and futureActivity 1 was executed. In that case, if a futureActivity 2 exists, you return that index)
-If the last futureActivity was executed, return -1 to indicate the robot can finish its execution.
+After the recovery is executed, if it is succesful, identify which of the futureActivities have already been completed by the recovery process.
+You will do so by using the compute_continuation_activity tool, providing the list of futureActivities and a list of booleans with the same length indicating which futureActivity were executed during the recovery process.
+If the last futureActivity was executed, -1 is returned by the compute_continuation_activity to indicate the robot can finish its execution.
 
 Your final report, after executing all steps, should include the following:
 - Reasoning and Steps
@@ -154,8 +154,8 @@ Your final report, after executing all steps, should include the following:
 - Steps: ["Step 1", "Step 2", "Step 3", "..."]
 - Future Activities: {{"futureActivity 1": "executed on step X", "futureActivity 2": "not executed", "..."}}
 - Result: "The recovery plan was successfully executed."
-- Finished activity: True|False
-- Continue from step: <step number from where the robot should continue execution, using the index of the activity in futureActivities. This one should correspond to the earliest not executed futureActivity after the last executed one. If the latest futureActivities wes executed, return -1>
+- Finished activity: True|False (If continue activity is -1, then True, else False)
+- Continue from step: <step number from where the robot should continue execution, using the compute_continuation_activity tool>
 """
 
 RECOVERY_STEP_EXECUTION_PROMPT = """
