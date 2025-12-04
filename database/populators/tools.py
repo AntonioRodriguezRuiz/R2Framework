@@ -15,24 +15,13 @@ Notes:
 
 from __future__ import annotations
 
+import importlib
 from typing import Iterable
 
 from sqlmodel import Session, select
 from strands.tools.decorator import DecoratedFunctionTool
 
-# Agent tools (generic utilities)
-from agent_tools.database import (
-    register_plan,
-    register_solution,
-)
-from agent_tools.image import (
-    image_to_base64,
-    take_screenshot,
-)
 from database.tools.models import Tool
-
-# Core gateway tools
-from gateway.agent import route_to_human
 
 
 def _gather_tool_functions() -> list[DecoratedFunctionTool]:
@@ -42,23 +31,19 @@ def _gather_tool_functions() -> list[DecoratedFunctionTool]:
     Returns:
         List of DecoratedFunctionTool instances.
     """
-    potential_tools: Iterable = [
-        # Gateway-related
-        route_to_human,
-        # General agent tools
-        register_solution,  # Not used
-        register_plan,  # Not used
-        image_to_base64,
-        take_screenshot,
+    # Iterate over all agent_tools modules and collect decorated functions
+    modules = [
+        importlib.import_module("agent_tools"),
+        importlib.import_module("gateway.agent"),
     ]
 
-    tools: list[DecoratedFunctionTool] = []
-    for fn in potential_tools:
-        if isinstance(fn, DecoratedFunctionTool):
-            tools.append(fn)
-        else:
-            # Skip non-decorated functions (helpers, plain callables)
-            continue
+    tools: Iterable = [
+        fn
+        for module in modules
+        for fn in vars(module).values()
+        if callable(fn) and isinstance(fn, DecoratedFunctionTool)
+    ]
+
     return tools
 
 
