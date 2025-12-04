@@ -57,6 +57,15 @@ class LimitToolCounts(HookProvider):
             event.exception
             and isinstance(event.exception, ValidationError)
             or isinstance(event.exception, TypeError)
+        ) or (
+            event.result
+            and event.result.get("status", "") == "error"
+            and (
+                "TypeError"
+                in next(iter(event.result.get("content", [])), {}).get("text", {})
+                or "ValidationError"
+                in next(iter(event.result.get("content", [])), {}).get("text", {})
+            )
         ):
             with self._lock:
                 tool_count = self.tool_counts.get(tool_name, 0) - 1
