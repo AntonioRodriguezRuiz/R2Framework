@@ -1,5 +1,6 @@
 # Initializes the FastAPI application and includes the main entry point.
 # It also sets up the database connection and includes the necessary routers.
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -48,38 +49,54 @@ async def handle_robot_exception(websocket: WebSocket):
     Passes the exception to the robot exception handler for processing.
     """
     await websocket.accept()
-    data = (
-        await websocket.receive_json()
-    )  # Will only accept one exception per connection
 
-    # Grab the gatewayagent from db
-    with Session(database.general_engine) as session:
-        agent = session.exec(
-            select(database.Agent).where(
-                database.Agent.type == database.AgentType.GatewayAgent
-            )
-        ).first()
-
-        if not agent:
-            await websocket.send_json(
-                {
-                    "type": "done",
-                    "content": "No GatewayAgent found in the database.",
-                }
-            )
-            await websocket.close()
+    async def keep_alive():
+        try:
+            while True:
+                await asyncio.sleep(10)
+                await websocket.send_json({"type": "ping"})
+        except WebSocketDisconnect:
             return
 
-        invocation_state = {"websocket": websocket}
-        try:
-            response = await agent(invocation_state=invocation_state, **data)
-            await websocket.send_json({"type": "done", "content": response})
-            await websocket.close()
-        except WebSocketDisconnect as _:
-            logging.info("WebSocket disconnected before completion.")
-        except Exception as e:
-            logging.error(f"Error handling robot exception: {e}")
-            await websocket.send_json({"type": "error", "content": str(e)})
-            await websocket.close()
+    async def handle_exception():
+        data = (
+            await websocket.receive_json()
+        )  # Will only accept one exception per connection
+
+        # Grab the gatewayagent from db
+        with Session(database.general_engine) as session:
+            agent = session.exec(
+                select(database.Agent).where(
+                    database.Agent.type == database.AgentType.GatewayAgent
+                )
+            ).first()
+
+            if not agent:
+                await websocket.send_json(
+                    {
+                        "type": "done",
+                        "content": "No GatewayAgent found in the database.",
+                    }
+                )
+                await websocket.close()
+                return
+
+            invocation_state = {"websocket": websocket}
+            try:
+                response = await agent(invocation_state=invocation_state, **data)
+                await websocket.send_json({"type": "done", "content": response})
+                await websocket.close()
+            except WebSocketDisconnect as _:
+                logging.info("WebSocket disconnected before completion.")
+            except Exception as e:
+                logging.error(f"Error handling robot exception: {e}")
+                await websocket.send_json({"type": "error", "content": str(e)})
+                await websocket.close()
+
+    keep = asyncio.create_task(keep_alive())
+    work = asyncio.create_task(handle_exception())
+    _, pending = await asyncio.wait({keep, work}, return_when=asyncio.FIRST_COMPLETED)
+    for task in pending:
+        task.cancel()
 
     return
