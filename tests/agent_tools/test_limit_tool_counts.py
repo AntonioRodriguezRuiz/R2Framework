@@ -58,6 +58,7 @@ class FakeAfterToolCallEvent(AfterToolCallEvent):
     def __init__(self, tool_name: str, exception: Exception | None):
         self.tool_use = {"name": tool_name, "input": None, "toolUseId": ""}
         self.exception = exception
+        self.result = {"status": "success", "content": [], "toolUseId": ""}
 
 
 # Helpers to generate a ValidationError in a deterministic way
