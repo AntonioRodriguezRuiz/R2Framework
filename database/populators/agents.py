@@ -1,27 +1,23 @@
 """
-Hardcoded populator for registering framework Agents into the database.
+JSON-driven populator for registering framework Agents into the database.
 
-Further down the road this should be completely removed and loaded though a dump as the default agents. Contrary to tools, these are not dynamic
-
-Registered Agents:
-1. Gateway Orchestrator Agent            (routes external exceptions)
-2. UI Exception Handler Agent            (top-level UI recovery agent)
-3. UI Direct Recovery Agent              (sub-agent for direct recovery)
-4. UI Recovery Plan Generator Agent      (sub-agent that plans recovery)
-5. UI Step Execution Agent               (sub-agent that executes planned steps)
-6. UI UITARS Agent                       (sub-agent for UI grounding)
-7. UI Standalone UITARS Agent            (sub-agent for standalone action grounding)
+This replaces the previous hardcoded definitions and loads agent configurations
+from a JSON file. Tool populators and router populators remain unchanged.
 
 Notes:
 - Idempotent: agents are only created if they do not already exist (matched by name).
 - Tools must have been populated previously (populate_tools) or they will be skipped.
-- A default Router is created if none exists (uses settings fallback values).
+- Routers must exist for the specified model names in the JSON (use populate_routers first).
 - Response model paths are stored as import strings for dynamic loading at runtime.
+- Supports sub-agent relationships and tool attachments via JSON.
 """
 
 from __future__ import annotations
 
-from typing import List, Optional
+import importlib
+import json
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 from sqlmodel import Session, select
 
@@ -35,16 +31,7 @@ from database.agents.models import (
 from database.provider.models import Router
 from database.tools.models import Tool
 
-# Prompts & response models
-from gateway.prompts import GATEWAY_ORCHESTRATOR_PROMPT
-from modules.uierror.prompts import (
-    RECOVERY_DIRECT_PROMPT,
-    RECOVERY_PLANNER_PROMPT,
-    RECOVERY_STEP_EXECUTION_PROMPT,
-    UI_EXCEPTION_HANDLER,
-)
-
-# Settings (fallbacks if not present)
+# Settings (fallbacks if not present) used to resolve routers if JSON uses placeholders
 try:
     from settings import (
         PROVIDER_GROUNDING_MODEL,
@@ -62,8 +49,7 @@ except Exception:
 
 def _get_router_by_model(session: Session, model_name: str) -> Router:
     """
-    Return an existing Router for the given model_name or panics
-    (uses FREE_PROVIDER_API_KEY except for grounding model which may use PROVIDER_API_KEY).
+    Return an existing Router for the given model_name or panics.
     """
     router = session.exec(select(Router).where(Router.model_name == model_name)).first()
     if router:
@@ -90,13 +76,24 @@ def _argument(
 
 
 def _attach_tools(
-    session: Session, agent: Agent, tool_names: List[str], limit: Optional[int]
+    session: Session,
+    agent: Agent,
+    tool_names: List[str],
+    limits: Optional[List[Optional[int]]],
 ) -> None:
     """
     Attach tools (by name) to an Agent via AgentTool association.
     Skips missing tools but logs a warning.
+    When limits are provided, they must match the number of tools; each tool gets its corresponding limit.
     """
-    for tool_name in tool_names:
+
+    if limits is not None and len(tool_names) != len(limits):
+        raise ValueError(
+            f"[populate_agents] Tools/limits length mismatch for agent '{agent.name}': "
+            f"{len(tool_names)} tools vs {len(limits)} limits."
+        )
+
+    for idx, tool_name in enumerate(tool_names):
         tool = session.exec(select(Tool).where(Tool.name == tool_name)).first()
         if not tool:
             print(
@@ -114,7 +111,7 @@ def _attach_tools(
                 agent_id=agent.id,
                 tool=tool,
                 tool_id=tool.id,
-                limit=limit,
+                limit=(limits[idx] if limits is not None else None),
                 required=False,
             )
         )
@@ -124,7 +121,7 @@ def _create_agent(
     session: Session,
     name: str,
     description: str,
-    prompt: str,
+    prompt: str | None,
     response_model: str | None,
     args: List[Argument],
     router: Router,
@@ -177,261 +174,178 @@ def _create_sub_agent(
     )
 
 
+def _resolve_input_type(value: str | None) -> Agent.InputType:
+    if not value:
+        return Agent.InputType.TEXT
+    mapping = {
+        "TEXT": Agent.InputType.TEXT,
+        "IMAGETEXT": Agent.InputType.IMAGETEXT,
+    }
+    return mapping.get(value.upper(), Agent.InputType.TEXT)
+
+
+def _resolve_agent_type(value: str) -> AgentType:
+    mapping = {
+        "GatewayAgent": AgentType.GatewayAgent,
+        "ErrorAgent": AgentType.ErrorAgent,
+        "GuiAgent": AgentType.GuiAgent,
+    }
+    if value not in mapping:
+        raise ValueError(f"Unknown AgentType '{value}'.")
+    return mapping[value]
+
+
+def _load_json_config() -> Dict[str, Any]:
+    """
+    Load agent configuration from adjacent JSON file:
+    database/populators/agents.json
+
+    Expected structure:
+    {
+      "agents": [
+        {
+          "name": "...",
+          "description": "...",
+          "prompt": "..." | null,
+          "prompt_import": "package.module:CONST_OR_FUNC" | null,
+          "response_model": "package.module.ClassName" | null,
+          "router_model": "gpt-4o-mini" | "$PROVIDER_MODEL" | "$PROVIDER_VISION_MODEL" | "$PROVIDER_VISION_TOOL_MODEL" | "$PROVIDER_GROUNDING_MODEL",
+          "agent_type": "GatewayAgent" | "ErrorAgent" | "GuiAgent",
+          "input_type": "TEXT" | "IMAGETEXT",
+          "enabled": true,
+          "arguments": [
+            {"name": "...", "description": "...", "type": "str", "json_type": "string"}
+          ],
+          "tools": {"names": ["take_screenshot"], "limits": [null]}
+          }
+        ],
+      "sub_agents": [
+        {"parent": "UI Exception Handler", "child": "UI Direct Recovery", "limit": 1}
+      ]
+    }
+    """
+    here = Path(__file__).parent
+    cfg_path = here / "agents.json"
+    if not cfg_path.exists():
+        raise FileNotFoundError(
+            f"[populate_agents] Missing JSON configuration file: {cfg_path}"
+        )
+    with cfg_path.open("r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _resolve_router_model(model_token: str) -> str:
+    """
+    Translate special tokens into configured model names,
+    otherwise pass through literal model names.
+    """
+    token_map = {
+        "$PROVIDER_MODEL": PROVIDER_MODEL,
+        "$PROVIDER_VISION_MODEL": PROVIDER_VISION_MODEL,
+        "$PROVIDER_VISION_TOOL_MODEL": PROVIDER_VISION_TOOL_MODEL,
+        "$PROVIDER_GROUNDING_MODEL": PROVIDER_GROUNDING_MODEL,
+    }
+    return token_map.get(model_token, model_token)
+
+
+def _import_prompt(prompt_import: str) -> str:
+    """
+    Import prompt from 'package.module:ATTRIBUTE_OR_CALLABLE'.
+    If callable, call it without args to get the prompt string.
+    """
+    module_name, _, attr = prompt_import.partition(":")
+    if not module_name or not attr:
+        raise ValueError(
+            f"Invalid prompt_import '{prompt_import}'. Expected 'module:attr'"
+        )
+    module = importlib.import_module(module_name)
+    obj = getattr(module, attr)
+    if callable(obj):
+        raise ValueError("Prompt import functions are not supported in this context.")
+    return str(obj)
+
+
 def populate_agents(engine) -> None:
     """
-    Populate the database with framework agents and their relationships.
+    Populate the database with framework agents and their relationships from JSON.
     """
+    cfg = _load_json_config()
+    agents_cfg: List[Dict[str, Any]] = cfg.get("agents", [])
+    subs_cfg: List[Dict[str, Any]] = cfg.get("sub_agents", [])
+
+    if not agents_cfg:
+        print("[populate_agents] No agents found in JSON configuration.")
+        return
+
     with Session(engine) as session:
-        # Resolve routers per model requirement (created on demand if missing)
-        gateway_router = _get_router_by_model(session, PROVIDER_MODEL)
-        ui_handler_router = _get_router_by_model(session, PROVIDER_MODEL)
-        direct_recovery_router = _get_router_by_model(
-            session, PROVIDER_VISION_TOOL_MODEL
-        )
-        plan_generator_router = _get_router_by_model(session, PROVIDER_VISION_MODEL)
-        step_execution_router = _get_router_by_model(
-            session, PROVIDER_VISION_TOOL_MODEL
-        )
-        uitars_router = _get_router_by_model(session, PROVIDER_GROUNDING_MODEL)
-        standalone_uitars_router = _get_router_by_model(
-            session, PROVIDER_GROUNDING_MODEL
-        )
+        # Create agents
+        created_agents: Dict[str, Agent] = {}
 
-        # Gateway Agent
-        gateway_args = [
-            _argument(
-                "code",
-                "Raw error code or identifier reported by the RPA system.",
-                "str",
-                "string",
-            ),
-            _argument(
-                "variables",
-                "Dictionary of runtime variables at error time.",
-                "dict",
-                "object",
-            ),
-            _argument(
-                "details",
-                "Additional structured details or metadata about the error.",
-                "dict",
-                "object",
-            ),
-        ]
+        for item in agents_cfg:
+            name = item["name"]
+            description = item.get("description", "") or ""
+            prompt: Optional[str] = item.get("prompt")
+            prompt_import = item.get("prompt_import")
+            if prompt_import and not prompt:
+                prompt = _import_prompt(prompt_import)
 
-        gateway_agent = _create_agent(
-            session=session,
-            name="Gateway Orchestrator",
-            description="Central orchestrator that standardizes and routes external RPA error notifications.",
-            prompt=GATEWAY_ORCHESTRATOR_PROMPT,
-            response_model="gateway.templates.ResponseToRPA",
-            args=gateway_args,
-            router=gateway_router,
-            agent_type=AgentType.GatewayAgent,
-        )
+            response_model = item.get("response_model")
+            router_model_token = item.get("router_model", "$PROVIDER_MODEL")
+            router_model_name = _resolve_router_model(router_model_token)
+            router = _get_router_by_model(session, router_model_name)
 
-        _attach_tools(
-            session,
-            gateway_agent,
-            [
-                "route_to_human",
-            ],
-            None,
-        )
+            agent_type = _resolve_agent_type(item["agent_type"])
+            input_type = _resolve_input_type(item.get("input_type"))
+            enabled = bool(item.get("enabled", True))
 
-        # UI Exception Handler (Top-level)
-        ui_handler_args = [
-            _argument(
-                "task",
-                "Original business task the robot was executing.",
-                "str",
-                "string",
-            ),
-            _argument(
-                "action_history",
-                "List of executed actions prior to failure.",
-                "list",
-                "array",
-            ),
-            _argument(
-                "failed_activity",
-                "The action that failed causing the exception.",
-                "dict",
-                "object",
-            ),
-            _argument(
-                "future_activities",
-                "Planned upcoming actions after failure.",
-                "list",
-                "array",
-            ),
-            _argument(
-                "variables", "Runtime variables relevant to the task.", "dict", "object"
-            ),
-        ]
+            args_list = []
+            for arg in item.get("arguments", []):
+                args_list.append(
+                    _argument(
+                        name=arg["name"],
+                        description=arg.get("description", ""),
+                        py_type=arg.get("type", "str"),
+                        json_type=arg.get("json_type", "string"),
+                    )
+                )
 
-        ui_exception_handler_agent = _create_agent(
-            session=session,
-            name="UI Exception Handler",
-            description="""## Agent description
-            Module responsible for managing UI-related errors.
-            This module has access to the current UI state via screenshots and is provided with visual information about the moment where execution failed.
-            It specializes in identifying and resolving issues related to user interface interactions, element detection, and visual validation failures.
+            agent = _create_agent(
+                session=session,
+                name=name,
+                description=description,
+                prompt=prompt,
+                response_model=response_model,
+                args=args_list,
+                router=router,
+                agent_type=agent_type,
+                input_type=input_type,
+                enabled=enabled,
+            )
+            created_agents[name] = agent
 
-            ## Module restrictions
-            - Must have access to current UI via screenshots
-            - Must be provided visual information about execution failure moment
+            # Tools
+            tools_cfg = item.get("tools", {})
+            tool_names = tools_cfg.get("names", []) or []
+            tool_limits = tools_cfg.get("limits", None)
+            if tool_names:
+                _attach_tools(session, agent, tool_names, tool_limits)
+        # Sub-agent relationships
+        for rel in subs_cfg:
+            parent_name = rel["parent"]
+            child_name = rel["child"]
+            limit = rel.get("limit")
 
-            ## Example error types
-            - Error raised when a UI element cannot be located
-            """,
-            prompt=UI_EXCEPTION_HANDLER,
-            response_model="modules.uierror.templates.UiExceptionReport",
-            args=ui_handler_args,
-            router=ui_handler_router,
-            agent_type=AgentType.ErrorAgent,
-            input_type=Agent.InputType.TEXT,
-        )
+            parent = session.exec(
+                select(Agent).where(Agent.name == parent_name)
+            ).first()
+            child = session.exec(select(Agent).where(Agent.name == child_name)).first()
+            if not parent or not child:
+                print(
+                    f"[populate_agents] Warning: SubAgent relation '{parent_name}' -> '{child_name}' skipped (missing agent)."
+                )
+                continue
 
-        _attach_tools(
-            session, ui_exception_handler_agent, ["compute_continuation_activity"], None
-        )
-
-        # Direct Recovery Agent
-        direct_recovery_args = [
-            _argument("task", "Task description at failure time.", "str", "string"),
-            _argument("action_history", "Prior executed actions.", "list", "array"),
-            _argument("failed_activity", "Failed action structure.", "dict", "object"),
-            _argument("variables", "Execution variables.", "dict", "object"),
-        ]
-        direct_recovery_agent = _create_agent(
-            session=session,
-            name="UI Direct Recovery",
-            description="Performs immediate direct UI recovery using vision and tool models.",
-            prompt=RECOVERY_DIRECT_PROMPT,
-            response_model="modules.uierror.templates.RecoveryDirectReport",
-            args=direct_recovery_args,
-            router=direct_recovery_router,
-            agent_type=AgentType.GuiAgent,
-            input_type=Agent.InputType.IMAGETEXT,
-            enabled=False,
-        )
-        _attach_tools(
-            session,
-            direct_recovery_agent,
-            [
-                "take_screenshot",
-            ],
-            None,
-        )
-
-        # Recovery Plan Generator
-        plan_generator_args = [
-            _argument("task", "Task description at failure time.", "str", "string"),
-            _argument("action_history", "Prior executed actions.", "list", "array"),
-            _argument("failed_activity", "Failed action structure.", "dict", "object"),
-            _argument(
-                "future_activities", "Upcoming planned actions.", "list", "array"
-            ),
-            _argument("variables", "Execution variables.", "dict", "object"),
-        ]
-        plan_generator_agent = _create_agent(
-            session=session,
-            name="UI Recovery Planner",
-            description="Generates a multi-step recovery plan for a UI failure.",
-            prompt=RECOVERY_PLANNER_PROMPT,
-            response_model="modules.uierror.templates.RecoveryPlannerReport",
-            args=plan_generator_args,
-            router=plan_generator_router,
-            agent_type=AgentType.GuiAgent,
-            input_type=Agent.InputType.IMAGETEXT,
-            enabled=False,
-        )
-        _attach_tools(session, plan_generator_agent, ["take_screenshot"], None)
-
-        # Step Execution Agent
-        step_execution_args = [
-            _argument("step", "Current recovery step to execute.", "str", "string"),
-            _argument(
-                "step_history", "Previously executed recovery steps.", "list", "array"
-            ),
-            _argument("process_goal", "Overall goal of the process.", "str", "string"),
-            _argument("variables", "Execution variables.", "dict", "object"),
-            _argument("is_final", "Whether this is the final step.", "bool", "boolean"),
-        ]
-        step_execution_agent = _create_agent(
-            session=session,
-            name="UI Step Executor",
-            description="Executes individual planned recovery steps and validates outcomes.",
-            prompt=RECOVERY_STEP_EXECUTION_PROMPT,
-            response_model="modules.uierror.templates.RecoveryStepExecutionResult",
-            args=step_execution_args,
-            router=step_execution_router,
-            agent_type=AgentType.GuiAgent,
-            input_type=Agent.InputType.IMAGETEXT,
-            enabled=False,
-        )
-        _attach_tools(session, step_execution_agent, ["take_screenshot"], None)
-
-        # UITARS Agent
-        uitars_args = [
-            _argument("task", "Action or UI step to ground.", "str", "string"),
-            _argument("step_history", "Previously executed steps.", "list", "array"),
-            _argument("variables", "Execution variables.", "dict", "object"),
-            _argument(
-                "expect_ui_change",
-                "Whether an observable UI change is expected.",
-                "bool",
-                "boolean",
-            ),
-        ]
-        uitars_agent = _create_agent(
-            session=session,
-            name="UI UITARS Grounding",
-            description="Grounds UI actions using UITARS model and executes them.",
-            prompt="Ground and execute UI actions using provided context and screenshots.",
-            response_model=None,
-            args=uitars_args,
-            router=uitars_router,
-            agent_type=AgentType.GuiAgent,
-            input_type=Agent.InputType.IMAGETEXT,
-        )
-        _attach_tools(session, uitars_agent, ["take_screenshot"], None)
-
-        # Standalone UITARS Agent
-        standalone_uitars_args = [
-            _argument(
-                "task", "Task description the robot was attempting.", "str", "string"
-            ),
-            _argument(
-                "action_history", "History of executed actions.", "list", "array"
-            ),
-            _argument("failed_activity", "Failed action structure.", "dict", "object"),
-            _argument("variables", "Execution variables.", "dict", "object"),
-        ]
-        standalone_uitars_agent = _create_agent(
-            session=session,
-            name="UI Standalone UITARS",
-            description="Executes recovery directly via iterative UITARS grounding without planning.",
-            prompt="Iteratively ground and execute UI actions until task recovered or attempts exhausted.",
-            response_model=None,
-            args=standalone_uitars_args,
-            router=standalone_uitars_router,
-            agent_type=AgentType.GuiAgent,
-            input_type=Agent.InputType.IMAGETEXT,
-        )
-        _attach_tools(session, standalone_uitars_agent, [], None)
-
-        _create_sub_agent(session, gateway_agent, ui_exception_handler_agent, 1)
-        # Build sub-agent hierarchy under UI Exception Handler
-        _create_sub_agent(session, ui_exception_handler_agent, direct_recovery_agent, 1)
-        _create_sub_agent(session, ui_exception_handler_agent, plan_generator_agent, 1)
-        _create_sub_agent(session, ui_exception_handler_agent, step_execution_agent, 1)
-        _create_sub_agent(session, direct_recovery_agent, uitars_agent, 1)
-        _create_sub_agent(session, step_execution_agent, uitars_agent, 1)
-        _create_sub_agent(
-            session, ui_exception_handler_agent, standalone_uitars_agent, 1
-        )
+            _create_sub_agent(session, parent, child, limit)
 
         session.commit()
-        print("[populate_agents] Agent population complete.")
+        print("[populate_agents] Agent population from JSON complete.")

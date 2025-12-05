@@ -689,6 +689,29 @@ async def standalone_uitars(
         Success: Returns a textual recovery plan or JSON-serializable plan in content[0]["text"].
         Error: Returns information about what went wrong.
     """
+    # conversation_history = [
+    #     """Thought: I'm currently looking at the login page of the interface. The username has already been entered, and we're just one step away from completing the login process. There's a purple "Continue" button located just below the username section right in front of me. After I finish entering the username, I need to click this button to proceed to the next step.
+    #     Action: type(content='PassWord')""",
+    #     """Thought: It seems that the password field hasn't fully loaded yet, and my previous attempt to enter the password didn't go through. Right now, I'm facing this login screen with a purple "Welcome Back" text at the top. The username section already has "admin" filled in, but the password section still appears blank. I need to click on the password input box again to make sure it successfully captures my input this time.
+    #     Action: click(start_box='(784,622)')""",
+    #     """Thought: I noticed that the username has already been entered. Now, I'll need to click on the password field again to make sure it becomes active, so I can proceed with the password entry process
+    #     Action: click(start_box='(834,662)')""",
+    #     """Thought: It appears that my previous click on the text box didn't successfully activate the input field. However, that's alright; the username is already filled in. Now, all I need to do is re-click on the password field, and that should allow me to start entering the password. Let's go ahead and complete this step.
+    #     Action: click(start_box='(850,655)')""",
+    #     """Thought: I glanced at the screen and saw the login page displaying \"Welcome Back.\" The username field was already filled with "admin." This time, I really needed to make sure that the input field was properly activated, as it would allow me to get ready for entering the password in the next step.
+    #     Action: click(start_box='(884,670)')""",
+    #     """Thought: It seems that my previous attempts haven’t had any effect, so it looks like I need to change my approach. On the screen, there’s a prominent purple login box that says "Welcome Back." I’ve already filled in the username, and now I need to click the purple "Continue" button below to proceed to the next step.
+    #     Action: click(start_box='(938,765)')""",
+    #     """Thought: I see that there is a password input box currently awaiting my entry. The task clearly specifies that the password is "admin." I'll click on the input box first, and then I can go ahead and type in the password.
+    #     Action: click(start_box='(873,701)')""",
+    #     """Thought: The setup process is progressing well; the username has been chosen, and the password field is right in front of me. The task instructions clearly state that I need to enter "admin" in the password section, so I'll go ahead and input that password now. Once I finish typing it in, we can move on to the next step of the login verification process.
+    #     Action: type(content='admin')""",
+    #     """Thought: Alright, the username and password have all been set up perfectly. Now there’s just one final step left – I can see a prominent purple "Sign In" button at the bottom of the login screen, right underneath the Back button. I need to click this button to complete the entire login process.
+    #     Action: click(start_box='(1031,797)')""",
+    #     """Thought: After patiently seeing the \"Welcome back, admin\" message and all the system status displays, it's clear that the login process has been successfully completed. The system has fully validates the username "admin" and the password we entered, allowing us to access all features and secure the session. Since the login verification has been successfully achieved, this entire authentication workflow has now come to a successful conclusion.
+    #     Action: finished(content='登录成功了，现在可以开始体验系统的全部功能了。')""",
+    # ]
+    # return conversation_history
 
     instruction = f"""
 Task: {task}
