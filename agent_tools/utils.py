@@ -1,6 +1,5 @@
 import numpy as np
 from pydantic import ValidationError
-from pydantic_core import InitErrorDetails
 from strands import tool
 
 
@@ -25,4 +24,4 @@ def compute_continuation_activity(
     if rev_idx == 0:  # All executed
         return -1
 
-    return arr.size - 1 - rev_idx
+    return arr.size - rev_idx
