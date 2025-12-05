@@ -54,6 +54,8 @@ When you receive an error notification, analyze it systematically:
 - **Analyze tools at your disposal**
 - **Module Selection**: Choose the best-fit module based on capabilities and current load
 
+Please note that inputs will only contain textual information. Each module is equiped with the necessary tools to perform its tasks, such as taking screenshots, reading logs, executing scripts, etc. even if not provided in the error details.
+
 ## Response Format:
 
 Provide your routing decision as a structured response:
